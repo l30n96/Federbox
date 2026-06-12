@@ -1348,6 +1348,7 @@ async function loadExamples(){
   // Fetch sounds for any birds that were loaded from server cache without sounds
   autoSyncSounds();
 }
+async function loadBirdList(listName){
   const birds=BIRD_LISTS[listName]; if(!birds)return;
   toast(`Lade „${listName}"…`);
   let added=0; const addedIds=[];
