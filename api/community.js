@@ -16,8 +16,17 @@
 // (Spitzname, Punktestand, geteilte Sets, Chat-Nachrichten). Keine
 // Accounts, keine E-Mails, keine IPs in der Datenbank.
 
-const KV_URL   = process.env.KV_REST_API_URL   || process.env.UPSTASH_REDIS_REST_URL   || '';
-const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+// Env-Werte robust einlesen: Whitespace und versehentlich mitkopierte
+// Anführungszeichen entfernen, Slash am Ende abschneiden. Wird zur
+// Request-Zeit gelesen, damit neue Vercel-Env-Vars sicher ankommen.
+function cleanEnv(v){
+  return String(v || '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
+}
+function kvConfig(){
+  const url   = cleanEnv(process.env.KV_REST_API_URL   || process.env.UPSTASH_REDIS_REST_URL);
+  const token = cleanEnv(process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN);
+  return { url, token };
+}
 
 const MAX_NAME    = 24;    // Spitznamen
 const MAX_TEXT    = 280;   // Chat-Nachrichten
@@ -29,13 +38,15 @@ const SET_TTL     = 60 * 60 * 24 * 180; // geteilte Sets leben 180 Tage
 
 // Ein Redis-Kommando über die Upstash-REST-API ausführen.
 async function kv(cmd){
-  const r = await fetch(KV_URL, {
+  const { url, token } = kvConfig();
+  const r = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KV_TOKEN },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: JSON.stringify(cmd),
   });
-  const j = await r.json();
-  if (j.error) throw new Error(j.error);
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && j.error) || ('KV HTTP ' + r.status));
+  if (!j || j.error) throw new Error((j && j.error) || 'KV: leere Antwort');
   return j.result;
 }
 
@@ -56,6 +67,7 @@ module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
+  const { url: KV_URL, token: KV_TOKEN } = kvConfig();
   if (!KV_URL || !KV_TOKEN) {
     return json(res, 503, { error: 'Community-Backend nicht konfiguriert', setup: true });
   }
