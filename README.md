@@ -38,10 +38,42 @@ Dann im Browser `http://localhost:3000` öffnen.
 
 1. Projekt zu **GitHub** pushen.
 2. Auf [vercel.com](https://vercel.com) **„New Project“** → das Repo importieren.
-3. **Environment Variable** setzen (siehe unten): `XC_API_KEY`.
+3. **Environment Variables** setzen (siehe unten): `XC_API_KEY` + Upstash-Variablen.
 4. **Deploy** klicken. Fertig – Frontend und `/api/proxy` laufen automatisch zusammen.
 
 Kein Build‑Schritt nötig, es ist ein statisches Frontend + eine Serverless‑Funktion.
+
+---
+
+## Umgebungsvariablen (Vercel)
+
+| Variable | Pflicht | Zweck |
+|----------|---------|-------|
+| `XC_API_KEY` | **Ja** | Xeno‑canto API‑Key für Vogelstimmen (siehe unten) |
+| `KV_REST_API_URL` | Empfohlen | Upstash Redis REST‑URL für Bird‑Cache & Community |
+| `KV_REST_API_TOKEN` | Empfohlen | Upstash Redis REST‑Token |
+
+> **Wichtig für Beispiel‑Sammlungen:** Ohne die KV‑Variablen (`KV_REST_API_URL` /
+> `KV_REST_API_TOKEN`) funktioniert der **Bird‑Cache** nicht. Das bedeutet, dass beim Laden
+> von Beispiel‑Sammlungen (z.B. „Gartenvögel", „Waldvögel") **jeder Vogel einzeln** über
+> Wikipedia/Wikidata/Xeno‑canto angereichert werden muss. Das dauert deutlich länger und kann
+> bei vielen Vögeln auf einmal an API‑Rate‑Limits scheitern.
+>
+> **Empfehlung:** Immer einen Upstash‑Redis einrichten (kostenloser Free‑Tier reicht).
+> Einmal angereicherte Vögel werden dann gecacht und stehen sofort zur Verfügung.
+
+### Upstash Redis einrichten (für Bird‑Cache + Community)
+
+1. Im Vercel‑Dashboard: **Storage → Create Database → Upstash for Redis** (kostenloser
+   Free‑Tier reicht) und mit dem Projekt verknüpfen.
+2. Das setzt automatisch die Umgebungsvariablen `KV_REST_API_URL` und `KV_REST_API_TOKEN`
+   (bzw. `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`) – beide Namensvarianten
+   werden unterstützt.
+3. Neu deployen. Fertig.
+
+Ohne diese Variablen:
+- **Bird‑Cache:** Beispiel‑Sammlungen laden langsamer (jeder Vogel wird live angereichert)
+- **Community:** Tab zeigt einen freundlichen Hinweis; der Rest der App funktioniert unabhängig
 
 ---
 
@@ -91,17 +123,7 @@ importieren) und das **„Vogelhäuschen“** – einen einfachen Chatroom für 
   alles andere bleibt wie gehabt lokal.
 
 Damit die Community funktioniert, braucht die Funktion `api/community.js` einen kleinen
-**Redis‑Speicher (Upstash)**:
-
-1. Im Vercel‑Dashboard: **Storage → Create Database → Upstash for Redis** (kostenloser
-   Free‑Tier reicht locker) und mit dem Projekt verknüpfen.
-2. Das setzt automatisch die Umgebungsvariablen `KV_REST_API_URL` und `KV_REST_API_TOKEN`
-   (bzw. `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`) – beide Namensvarianten
-   werden unterstützt.
-3. Neu deployen. Fertig.
-
-Ohne diese Variablen zeigt der Community‑Tab nur einen freundlichen Hinweis – der Rest
-der App funktioniert davon unabhängig.
+**Redis‑Speicher (Upstash)** — siehe oben „Upstash Redis einrichten".
 
 ---
 
