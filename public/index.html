@@ -464,7 +464,7 @@ async function autoSyncSounds(){
     try{
       const sounds=await fetchSounds({la:b.la,en:b.en});
       if(sounds.length){ b.sounds=sounds; await DB.put('birds',b); loaded++; }
-    }catch(e){ break; }
+    }catch(e){ console.warn('Stimmen-Sync abgebrochen:',e); break; }
   }
   soundSyncRunning=false;
   if(loaded){
@@ -494,10 +494,10 @@ const LEVEL_NAMES=['','Eierschale','Nestling','Ästling','Pieper','Singvogel','S
 function xpForLevel(l){ return 40*l*l; } // kumulative XP-Schwelle für Level l
 const game = (()=>{
   try{ const g=JSON.parse(localStorage.getItem(GAME_KEY)||'{}');
-    return {xp:g.xp||0,streak:g.streak||0,lastDay:g.lastDay||'',best:g.best||0,sessions:g.sessions||0,badges:g.badges||[],combo:0};
-  }catch(e){ return {xp:0,streak:0,lastDay:'',best:0,sessions:0,badges:[],combo:0}; }
+    return {xp:g.xp||0,streak:g.streak||0,lastDay:g.lastDay||'',best:g.best||0,sessions:g.sessions||0,badges:g.badges||[],maxCombo:g.maxCombo||0,combo:0};
+  }catch(e){ return {xp:0,streak:0,lastDay:'',best:0,sessions:0,badges:[],maxCombo:0,combo:0}; }
 })();
-function saveGame(){ try{ localStorage.setItem(GAME_KEY,JSON.stringify({xp:game.xp,streak:game.streak,lastDay:game.lastDay,best:game.best,sessions:game.sessions,badges:game.badges})); }catch(e){} }
+function saveGame(){ try{ localStorage.setItem(GAME_KEY,JSON.stringify({xp:game.xp,streak:game.streak,lastDay:game.lastDay,best:game.best,sessions:game.sessions,badges:game.badges,maxCombo:game.maxCombo})); }catch(e){} }
 function gameLevel(){ let l=1; while(l<LEVEL_NAMES.length-1 && game.xp>=xpForLevel(l)) l++; return l; }
 function touchStreak(){
   const today=new Date().toDateString();
@@ -521,7 +521,7 @@ const BADGES=[
   {id:'master5', ic:'🏆', t:'Meistersammler',  d:'5 Vögel gemeistert',                 ok:()=>state.birds.filter(b=>b.box===5).length>=5},
   {id:'streak3', ic:'🔥', t:'Dranbleiber',     d:'3 Tage in Folge gelernt',            ok:()=>game.best>=3},
   {id:'streak7', ic:'☀️', t:'Wochenchor',      d:'7 Tage in Folge gelernt',            ok:()=>game.best>=7},
-  {id:'combo5',  ic:'⚡', t:'Im Flow',          d:'5 richtige in Serie',                ok:()=>game.badges.includes('combo5')},
+  {id:'combo5',  ic:'⚡', t:'Im Flow',          d:'5 richtige in Serie',                ok:()=>game.maxCombo>=5},
   {id:'sess10',  ic:'🎓', t:'Fleißig',         d:'10 Lerneinheiten abgeschlossen',     ok:()=>game.sessions>=10},
   {id:'lvl5',    ic:'🕊️', t:'Singvogel',       d:'Level 5 erreicht',                   ok:()=>gameLevel()>=5},
 ];
@@ -637,7 +637,8 @@ function renderDashboard(){
   const greet = hour<11?'Guten Morgen':hour<18?'Hallo':'Guten Abend';
   const lvl=gameLevel();
   const prevXP=xpForLevel(lvl-1), nextXP=xpForLevel(lvl);
-  const xpPct=Math.min(100,Math.round((game.xp-prevXP)/(nextXP-prevXP)*100));
+  const span=Math.max(1,nextXP-prevXP);
+  const xpPct=Math.min(100,Math.round((game.xp-prevXP)/span*100));
   const gamebar=`
     <div class="gamebar">
       <span class="statpill lvl"><span class="ic">🪶</span>Level ${lvl} · ${LEVEL_NAMES[lvl]}</span>
@@ -969,7 +970,7 @@ function openBird(id){
       if(sounds.length){ b.sounds=sounds; await DB.put('birds',b);
         if($('#nosnd')) openBird(id); }
       else { const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gefunden.'; }
-    }).catch(()=>{ const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; });
+    }).catch(e=>{ console.warn('Stimmen laden fehlgeschlagen:',e); const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; });
   }
 }
 async function nudgeBox(id,d){
@@ -1196,10 +1197,9 @@ async function finishCard(b,correct,manualAdvance=false){
   study.results.push({de:b.de,correct,box:b.box});
   touchStreak();
   if(correct){
-    game.combo++; buzz(12);
+    game.combo++; game.maxCombo=Math.max(game.maxCombo,game.combo); buzz(12);
     let xp = 10 + Math.min(10, (game.combo-1)*2); // Combo-Bonus
     if(game.combo>=2) comboPop(game.combo);
-    if(game.combo>=5 && !game.badges.includes('combo5')){ game.badges.push('combo5'); saveGame(); toast('⚡ Abzeichen: Im Flow!', true); }
     study.xp=(study.xp||0)+xp; addXP(xp);
   } else {
     game.combo=0; buzz([40,30,40]);
