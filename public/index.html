@@ -408,18 +408,53 @@ async function px(service, params){
 // damit keine Personen, Orte o.ä. auftauchen (z.B. bei „Kuckuck“).
 async function searchBirds(term){
   const data = await px('wiki', {
-    action:'query', generator:'search', gsrsearch:`${term} hastemplate:"Taxobox"`, gsrlimit:8, gsrnamespace:0,
+    action:'query', generator:'search', gsrsearch:`${term} hastemplate:"Taxobox"`, gsrlimit:12, gsrnamespace:0,
     prop:'pageimages|pageprops|extracts', piprop:'thumbnail', pithumbsize:480,
     exintro:1, explaintext:1, exsentences:2, exlimit:'max'
   });
   const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
   pages.sort((a,b)=>(a.index??99)-(b.index??99));
-  return pages
+  const cands = pages
     .filter(p=>!(p.pageprops && 'disambiguation' in p.pageprops)) // BKL-Seiten (z.B. „Star“) aussortieren
     .map(p=>({
       title:p.title, qid:p.pageprops?.wikibase_item||null,
       image:p.thumbnail?.source||null, extract:p.extract||''
     }));
+
+  // Nur echte Vögel (Aves) auf Artniveau behalten.
+  // Prüfung über Wikidata: Vogelspezifische Properties (eBird, IOC)
+  // und Taxon-Rang = Art (Q7432) oder Unterart (Q68947).
+  return filterBirds(cands);
+}
+
+// Vogelfilter über Wikidata: prüft ob Kandidaten tatsächlich Vögel auf Artniveau sind.
+async function filterBirds(cands){
+  const withQid = cands.filter(c=>c.qid);
+  if(!withQid.length) return cands.filter(c=>!c.qid); // Ohne QID können wir nichts prüfen
+  const qids = [...new Set(withQid.map(c=>c.qid))];
+  try{
+    const wd = await px('wikidata',{
+      action:'wbgetentities', ids:qids.join('|'),
+      props:'claims', languages:'en'
+    });
+    const entities = wd?.entities || {};
+    const validQids = new Set();
+    for(const qid of qids){
+      const ent = entities[qid];
+      if(!ent || !ent.claims) continue;
+      // Vogelspezifische Properties: P3444 (eBird), P4526 (IOC), P10243 (Avibase)
+      const isBird = !!(ent.claims.P3444 || ent.claims.P4526 || ent.claims.P10243);
+      if(!isBird) continue;
+      // Taxon-Rang prüfen (P105): Q7432=Art, Q68947=Unterart
+      const rank = ent.claims.P105?.[0]?.mainsnak?.datavalue?.value?.id;
+      if(rank && rank!=='Q7432' && rank!=='Q68947') continue; // Gattung/Familie etc. ausschließen
+      validQids.add(qid);
+    }
+    return cands.filter(c => c.qid && validQids.has(c.qid));
+  }catch(e){
+    // Bei Fehler: Fallback auf alle Kandidaten (besser als nichts zeigen)
+    return cands;
+  }
 }
 
 // Klammerzusatz aus Wikipedia-Titeln entfernen: „Star (Art)“ → „Star“
@@ -435,7 +470,9 @@ async function enrichBird(cand){
       if(ent){
         en = ent.labels?.en?.value || null;
         const p225 = ent.claims?.P225?.[0]?.mainsnak?.datavalue?.value;
-        if(p225) la = p225;
+        // Nur vollständige Artnamen übernehmen (Gattung + Epitheton),
+        // z.B. „Sitta europaea" – reine Gattungsnamen wie „Sitta" ignorieren.
+        if(p225 && p225.trim().split(/\s+/).length >= 2) la = p225;
         // Deutscher Name: der Wikipedia-Titel ist verlässlich deutsch. Das
         // Wikidata-Label ist bei Taxa oft nur der wissenschaftliche Name –
         // es dient nur als Ersatz, falls der Titel selbst wissenschaftlich ist.
