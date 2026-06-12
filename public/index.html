@@ -585,6 +585,7 @@ async function _runEnrichQueue(){
         // Give up after max retries — mark as no longer pending
         current.pending=false;
         await DB.put('birds', current);
+        await new Promise(r=>setTimeout(r, 2000));
       }
     }
   }
