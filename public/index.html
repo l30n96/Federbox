@@ -1027,6 +1027,7 @@ function openBird(id){
   const b=birdById(id); if(!b)return;
   const inSets=state.sets.filter(s=>s.birdIds.includes(id)).map(s=>s.name);
   const images = b.images && b.images.length ? b.images : (b.image ? [b.image] : []);
+  _carouselIdx=0;
   modalRoot.innerHTML=`
     <div class="scrim"><div class="modal">
       <div class="mhead">
@@ -1113,7 +1114,7 @@ async function fetchBirdImages(b){
       action:'query', generator:'images', titles:b.la,
       gimlimit:8, prop:'imageinfo', iiprop:'url', iiurlwidth:520
     });
-    const pages=data?.query?.pages?Object.values(data.query.pages):[];
+    const pages=(data?.query?.pages) ? Object.values(data.query.pages) : [];
     const imgs=pages
       .filter(p=>p.imageinfo&&p.imageinfo[0]&&/\.(jpg|jpeg|png|webp)/i.test(p.title||''))
       .map(p=>p.imageinfo[0].thumburl||p.imageinfo[0].url)
