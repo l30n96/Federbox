@@ -544,11 +544,28 @@ async function _runEnrichQueue(){
   const maxRetries = 3;
   const retryCount = new Map(); // id → attempts
 
+  // Batch cache lookup: collect all pending bird names and check server cache first
+  const pendingNames = _enrichQueue
+    .map(b => b.de)
+    .filter(Boolean);
+  const cachedProfiles = pendingNames.length ? await fetchCachedBirds(pendingNames) : new Map();
+
   while(_enrichQueue.length){
     const b = _enrichQueue.shift();
     // Skip if bird was removed or already enriched
     const current = state.birds.find(x=>x.id===b.id);
     if(!current || !current.pending) continue;
+    // Check shared server cache first — avoids API calls entirely
+    const cached = cachedProfiles.get((b.de||'').toLowerCase());
+    if(cached && cached.de){
+      current.la=cached.la; current.en=cached.en; current.image=cached.image;
+      current.sounds=cached.sounds||[]; current.wiki=cached.wiki;
+      current.pending=false;
+      await DB.put('birds', current);
+      enriched++;
+      continue;
+    }
+
     // Respect rate limits — wait until budget available for ALL services
     // Each bird needs: wiki (search) + wikidata (filter+enrich) + xc (sounds)
     const maxWait = 90_000;
@@ -1187,9 +1204,18 @@ async function addCandidate(i){
   const c = (state._lastResults||[])[i]; if(!c){ toast('Treffer nicht mehr verfügbar.'); return; }
   const btn=$(`#res${i} .btn`); if(btn){btn.disabled=true; btn.innerHTML='<span class="spin"></span>';}
   try{
-    const b = await enrichBird(c);
+    // Check shared server cache first — skip expensive API enrichment if already cached
+    const name = c.title || c.de || '';
+    const cached = name ? await fetchCachedBirds([name]) : new Map();
+    const profile = cached.get(name.toLowerCase());
+    let b;
+    if(profile && profile.de){
+      b = birdFromCache(profile);
+    } else {
+      b = await enrichBird(c);
+      cacheBirdProfiles([b]); // store in server cache for others
+    }
     await DB.put('birds',b); state.birds.push(b);
-    cacheBirdProfiles([b]); // store in server cache for others
     toast(`„${b.de}" hinzugefügt${b.sounds.length?` · ${b.sounds.length} Stimmen`:''}.`);
     if(btn){btn.outerHTML='<span class="pill" style="background:var(--primary-soft);color:var(--primary-2);border-color:var(--primary)">✓ Im Kasten</span>';}
   }catch(e){ toast('Konnte nicht hinzugefügt werden.'); if(btn){btn.disabled=false;btn.textContent='+ Hinzufügen';} }
