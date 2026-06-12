@@ -14,6 +14,7 @@ Alle Daten liegen **lokal im Browser** (IndexedDB). Nichts wird auf einen Server
 - **Leitner‑Kasten:** 5 Boxen, Wiederholungs‑Intervalle 1 / 2 / 4 / 8 / 16 Tage
 - **Automatische Recherche:** Deutscher Name + Bild (Wikipedia), wissenschaftlicher Name (Wikidata), Rufe (Xeno‑canto)
 - **Sets:** eigene Lern‑Sets zusammenstellen
+- **Community (optional):** Rangliste, Sets teilen/importieren per Code, Chatroom „Vogelhäuschen“
 - **Offline‑fähig:** einmal angelegte Vögel kannst du auch ohne Netz lernen
 - **Export / Import / Reset** in den Einstellungen
 
@@ -73,7 +74,34 @@ Der Key bleibt serverseitig; der Browser sieht ihn nie.
   durchgereicht.
 - **Audio & Bilder** brauchen **kein** CORS – die werden direkt von Xeno‑canto / Wikimedia
   geladen. Nur die Such‑Abfragen (JSON) laufen über den Proxy.
+- **`api/community.js`** – Serverless‑Funktion für die Community‑Features (siehe unten).
 - **Speicherung:** IndexedDB im Browser (Stores `birds` und `sets`).
+
+---
+
+## Community (optional): Rangliste, geteilte Sets, Chat
+
+Unter dem Tab **„Community“** gibt es eine **Rangliste** (XP, Level, Streak, gemeisterte
+Vögel), eine Galerie **geteilter Sets** (eigene Sets per 6‑stelligem Code teilen und
+importieren) und das **„Vogelhäuschen“** – einen einfachen Chatroom für alle.
+
+- Alles ist **freiwillig und ohne Konto**: Erst wer einen Spitznamen wählt, taucht auf der
+  Rangliste auf bzw. kann chatten und Sets teilen.
+- Es verlassen nur Spitzname, Punktestand und aktiv geteilte Inhalte den Browser –
+  alles andere bleibt wie gehabt lokal.
+
+Damit die Community funktioniert, braucht die Funktion `api/community.js` einen kleinen
+**Redis‑Speicher (Upstash)**:
+
+1. Im Vercel‑Dashboard: **Storage → Create Database → Upstash for Redis** (kostenloser
+   Free‑Tier reicht locker) und mit dem Projekt verknüpfen.
+2. Das setzt automatisch die Umgebungsvariablen `KV_REST_API_URL` und `KV_REST_API_TOKEN`
+   (bzw. `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`) – beide Namensvarianten
+   werden unterstützt.
+3. Neu deployen. Fertig.
+
+Ohne diese Variablen zeigt der Community‑Tab nur einen freundlichen Hinweis – der Rest
+der App funktioniert davon unabhängig.
 
 ---
 
