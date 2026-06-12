@@ -541,16 +541,17 @@ async function _runEnrichQueue(){
   if(_enrichRunning) return;
   _enrichRunning = true;
   let enriched = 0;
+  const maxRetries = 2;
+  const retryCount = new Map(); // id → attempts
+
   while(_enrichQueue.length){
     const b = _enrichQueue.shift();
     // Skip if bird was removed or already enriched
     const current = state.birds.find(x=>x.id===b.id);
     if(!current || !current.pending) continue;
-    // Respect rate limits — if budget exhausted, re-queue and pause
-    if(!apiLimiter.canCall('wiki') || !apiLimiter.canCall('xc')){
-      _enrichQueue.unshift(b);
+    // Respect rate limits — wait until budget available
+    while(!apiLimiter.canCall('wiki') || !apiLimiter.canCall('xc')){
       await new Promise(r=>setTimeout(r, 5000));
-      continue;
     }
     try{
       await _throttleDelay(400);
@@ -569,9 +570,17 @@ async function _runEnrichQueue(){
       }
     }catch(e){
       console.warn('Hintergrund-Anreicherung fehlgeschlagen für', b.de, e);
-      // Re-queue with a delay on network errors
-      _enrichQueue.push(b);
-      await new Promise(r=>setTimeout(r, 8000));
+      const attempts = (retryCount.get(b.id)||0) + 1;
+      retryCount.set(b.id, attempts);
+      if(attempts <= maxRetries){
+        // Re-queue at end so other birds can proceed
+        _enrichQueue.push(b);
+      } else {
+        // Give up after max retries — mark as no longer pending
+        current.pending=false;
+        await DB.put('birds', current);
+      }
+      await new Promise(r=>setTimeout(r, 3000));
     }
   }
   _enrichRunning = false;
