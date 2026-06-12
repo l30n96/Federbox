@@ -52,6 +52,7 @@ Kein Build‑Schritt nötig, es ist ein statisches Frontend + eine Serverless‑
 | `XC_API_KEY` | **Ja** | Xeno‑canto API‑Key für Vogelstimmen (siehe unten) |
 | `KV_REST_API_URL` | Empfohlen | Upstash Redis REST‑URL für Bird‑Cache & Community |
 | `KV_REST_API_TOKEN` | Empfohlen | Upstash Redis REST‑Token |
+| `BUYMEACOFFEE_URL` | Optional | Link zur Buy‑Me‑a‑Coffee‑Seite. Nur wenn gesetzt, erscheint unter „Mehr" ein ☕‑Button (via `/api/config`). |
 
 > **Wichtig für Beispiel‑Sammlungen:** Ohne die KV‑Variablen (`KV_REST_API_URL` /
 > `KV_REST_API_TOKEN`) funktioniert der **Bird‑Cache** nicht. Das bedeutet, dass beim Laden
