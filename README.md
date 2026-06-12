@@ -4,7 +4,7 @@
 Du legst Vögel an (einzeln, als Set oder über die Beispiele), hörst die Rufe, siehst die Bilder
 und ordnest die Namen zu. Was du kannst, wandert in die nächste Box – bis Box 5 („gemeistert“).
 
-Alle Daten liegen **lokal im Browser** (IndexedDB). Nichts wird auf einen Server geladen.
+Alle Daten liegen **lokal im Browser** (IndexedDB). Nichts wird auf einen Server geladen
 
 ---
 
