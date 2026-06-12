@@ -193,7 +193,7 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 .study .progress .track i{display:block;height:100%;background:var(--primary);transition:width .3s}
 .study .progress .lab{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
 .qcard{padding:22px;text-align:center}
-.qcard .qimg{width:100%;aspect-ratio:5/3;object-fit:cover;border-radius:var(--r);background:var(--surface-2);margin-bottom:18px}
+.qcard .qimg{width:100%;aspect-ratio:5/3;object-fit:contain;border-radius:var(--r);background:var(--surface-2);margin-bottom:18px}
 .qcard .qimg.hidden{display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-family:var(--mono);font-size:13px}
 .qname{font-family:var(--display);font-size:30px;font-weight:500;margin:6px 0}
 .qname.reveal{color:var(--primary)}
@@ -663,6 +663,8 @@ async function _runEnrichQueue(){
     toast(`🐦 ${enriched} ${enriched===1?'Vogel wurde':'Vögel wurden'} erfolgreich angereichert!`, true);
     if(state.view==='collection'||state.view==='dashboard') render();
   }
+  // Fetch sounds for any birds that came from server cache but had no sounds stored
+  autoSyncSounds();
 }
 
 // Throttle helper: wait between sequential API-heavy operations to avoid 429.
@@ -801,11 +803,15 @@ async function pingBackend(){
 // Stimmen automatisch nachladen — der Nutzer muss nichts tun.
 // Respektiert API-Limits: stoppt sobald Budget aufgebraucht.
 let soundSyncRunning=false;
+let soundSyncPending=false;
 async function autoSyncSounds(){
-  if(soundSyncRunning || backendOk===false) return;
+  if(soundSyncRunning){ soundSyncPending=true; return; }
+  if(backendOk===false) return;
   const missing = state.birds.filter(b=>(!b.sounds||!b.sounds.length)&&(b.la||b.en));
   if(!missing.length) return;
   soundSyncRunning=true;
+  soundSyncPending=false;
+  toast(`🎵 Lade Stimmen für ${missing.length} ${missing.length===1?'Vogel':'Vögel'}…`);
   let loaded=0;
   for(const b of missing){
     // Stop if xeno-canto budget is low
@@ -820,6 +826,8 @@ async function autoSyncSounds(){
     toast(`🎶 Stimmen für ${loaded} ${loaded===1?'Vogel':'Vögel'} automatisch geladen.`);
     if(state.view==='collection'||state.view==='dashboard') render();
   }
+  // Restart if new birds were added while this run was in progress
+  if(soundSyncPending){ soundSyncPending=false; autoSyncSounds(); }
 }
 
 // Bereits gespeicherte Vögel reparieren:
@@ -1267,6 +1275,8 @@ async function addCandidate(i){
     await DB.put('birds',b); state.birds.push(b);
     toast(`„${b.de}" hinzugefügt${b.sounds.length?` · ${b.sounds.length} Stimmen`:''}.`);
     if(btn){btn.outerHTML='<span class="pill" style="background:var(--primary-soft);color:var(--primary-2);border-color:var(--primary)">✓ Im Kasten</span>';}
+    // Fetch sounds if the cached profile had none
+    if(!b.sounds||!b.sounds.length) autoSyncSounds();
   }catch(e){ toast('Konnte nicht hinzugefügt werden.'); if(btn){btn.disabled=false;btn.textContent='+ Hinzufügen';} }
 }
 
@@ -1335,8 +1345,9 @@ async function loadExamples(){
 
   // Enrich pending birds in background
   if(pendingBirds.length) enqueueEnrichment(pendingBirds);
+  // Fetch sounds for any birds that were loaded from server cache without sounds
+  autoSyncSounds();
 }
-async function loadBirdList(listName){
   const birds=BIRD_LISTS[listName]; if(!birds)return;
   toast(`Lade „${listName}"…`);
   let added=0; const addedIds=[];
@@ -1384,9 +1395,9 @@ async function loadBirdList(listName){
 
   // Enrich pending birds in background
   if(pendingBirds.length) enqueueEnrichment(pendingBirds);
+  // Fetch sounds for any birds that were loaded from server cache without sounds
+  autoSyncSounds();
 }
-
-/* ---- Settings ---- */
 async function renderSettings(){
   view.innerHTML=`
     <div class="hero" style="margin-bottom:14px"><h1>Mehr</h1></div>
