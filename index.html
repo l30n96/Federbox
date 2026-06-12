@@ -37,7 +37,7 @@ body{
   min-height:100dvh; -webkit-font-smoothing:antialiased;
 }
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
-input,textarea,select{font-family:inherit;font-size:15px;color:var(--ink)}
+input,textarea,select{font-family:inherit;font-size:16px;color:var(--ink)}
 h1,h2,h3{margin:0;font-family:var(--display);font-weight:500;letter-spacing:-.01em;line-height:1.1}
 a{color:var(--primary)}
 ::selection{background:var(--gold-soft)}
@@ -79,6 +79,8 @@ a{color:var(--primary)}
 /* ---------- mobile nav ---------- */
 .menu-toggle{display:none}
 @media(max-width:720px){
+  /* backdrop-filter würde ein Containing Block für die fixe Bottom-Nav bilden */
+  .topbar{backdrop-filter:none;background:rgba(231,238,230,.96)}
   .nav{
     position:fixed;left:0;right:0;bottom:0;z-index:50;margin:0;gap:0;
     background:var(--surface);border-top:1px solid var(--line);
@@ -163,7 +165,7 @@ a{color:var(--primary)}
 .field{display:flex;gap:10px;align-items:center}
 .input{
   width:100%;padding:13px 15px;border-radius:var(--r);border:1px solid var(--line);background:var(--surface);
-  font-size:15px;transition:border .15s,box-shadow .15s;outline:none
+  font-size:16px;transition:border .15s,box-shadow .15s;outline:none
 }
 .input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;display:block}
@@ -196,9 +198,12 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 .qname{font-family:var(--display);font-size:30px;font-weight:500;margin:6px 0}
 .qname.reveal{color:var(--primary)}
 .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
-.choice{padding:15px 14px;border:1.5px solid var(--line);border-radius:var(--r);background:var(--surface);font-size:16px;font-weight:500;
-  font-family:var(--display);transition:border .12s,background .12s;text-align:center}
+.choice{padding:15px 14px;min-height:54px;display:flex;align-items:center;justify-content:center;
+  border:1.5px solid var(--line);border-radius:var(--r);background:var(--surface);font-size:16px;font-weight:500;
+  font-family:var(--display);transition:border .12s,background .12s,transform .1s;text-align:center}
 .choice:hover{border-color:var(--primary)}
+.choice:active{transform:scale(.97)}
+@media(max-width:460px){ .choices{grid-template-columns:1fr} .choice{min-height:56px;font-size:17px} }
 .choice.correct{border-color:var(--primary);background:var(--primary-soft);color:var(--primary-2)}
 .choice.wrong{border-color:var(--robin);background:#F6E4DF;color:var(--robin)}
 .choice .num{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-right:8px}
@@ -219,6 +224,12 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
   display:grid;place-items:center;padding:18px;animation:fade .18s ease}
 .modal{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-lg);max-width:560px;width:100%;
   max-height:88dvh;overflow:auto;animation:pop .2s cubic-bezier(.2,.8,.3,1)}
+@media(max-width:560px){
+  .scrim{padding:0;align-items:end;place-items:end stretch}
+  .modal{max-width:none;border-radius:var(--r-lg) var(--r-lg) 0 0;max-height:92dvh;animation:sheet .28s cubic-bezier(.2,.8,.3,1)}
+  .modal .mbody{padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+}
+@keyframes sheet{from{transform:translateY(48px);opacity:.5}to{transform:none;opacity:1}}
 .modal .mhead{position:relative}
 .modal .mhead img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
 .modal .mbody{padding:22px}
@@ -248,6 +259,36 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2)}
 .spread{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+/* ---------- Gamification ---------- */
+.gamebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:20px}
+.statpill{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:13.5px;font-weight:600;box-shadow:var(--shadow)}
+.statpill .ic{font-size:15px}
+.statpill.flame{border-color:#EAC9A8;background:#FBF3E6;color:#9a5b1d}
+.statpill.lvl{border-color:var(--primary);background:var(--primary-soft);color:var(--primary-2)}
+.xpwrap{flex:1;min-width:150px;max-width:260px}
+.xpbar{height:8px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+.xpbar i{display:block;height:100%;background:linear-gradient(90deg,var(--b3),var(--gold));border-radius:99px;transition:width .6s cubic-bezier(.2,.8,.3,1)}
+.xplab{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:4px;display:flex;justify-content:space-between}
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px}
+.badge-c{padding:14px 10px;text-align:center}
+.badge-c.locked{opacity:.45;filter:grayscale(1)}
+.badge-c .bi{font-size:28px}
+.badge-c .bt{font-size:13px;font-weight:600;margin-top:6px}
+.badge-c .bd{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.combo-pop{position:fixed;left:50%;top:32%;z-index:90;font-family:var(--display);font-weight:600;font-size:30px;color:var(--gold);
+  text-shadow:0 2px 14px rgba(206,146,51,.45);pointer-events:none;animation:comboUp .95s ease forwards}
+@keyframes comboUp{0%{opacity:0;transform:translate(-50%,-30%) scale(.7)}25%{opacity:1;transform:translate(-50%,-50%) scale(1.12)}70%{opacity:1}100%{opacity:0;transform:translate(-50%,-100%) scale(1)}}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:95;overflow:hidden}
+.confetti i{position:absolute;top:-14px;width:9px;height:14px;border-radius:2px;animation:cfall linear forwards}
+@keyframes cfall{to{transform:translateY(106vh) rotate(720deg);opacity:.9}}
+.qcard.shake{animation:shake .42s}
+@keyframes shake{0%,100%{transform:none}20%{transform:translateX(-8px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+.bird,.stat,.box,.setcard,.mode,.res,.qcard,.endcard{animation:pop .3s cubic-bezier(.2,.8,.3,1) both}
+.grid .bird:nth-child(2),.modeselect .mode:nth-child(2){animation-delay:.04s}
+.grid .bird:nth-child(3),.modeselect .mode:nth-child(3){animation-delay:.08s}
+.grid .bird:nth-child(4),.modeselect .mode:nth-child(4){animation-delay:.12s}
+.bird:active,.mode:active,.box:active{transform:scale(.98)}
+
 @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes rot{to{transform:rotate(360deg)}}
@@ -411,6 +452,27 @@ async function pingBackend(){
   return backendOk;
 }
 
+// Stimmen automatisch nachladen — der Nutzer muss nichts tun.
+let soundSyncRunning=false;
+async function autoSyncSounds(){
+  if(soundSyncRunning || backendOk===false) return;
+  const missing = state.birds.filter(b=>(!b.sounds||!b.sounds.length)&&(b.la||b.en));
+  if(!missing.length) return;
+  soundSyncRunning=true;
+  let loaded=0;
+  for(const b of missing){
+    try{
+      const sounds=await fetchSounds({la:b.la,en:b.en});
+      if(sounds.length){ b.sounds=sounds; await DB.put('birds',b); loaded++; }
+    }catch(e){ console.warn('Stimmen-Sync abgebrochen:',e); break; }
+  }
+  soundSyncRunning=false;
+  if(loaded){
+    toast(`🎶 Stimmen für ${loaded} ${loaded===1?'Vogel':'Vögel'} automatisch geladen.`);
+    if(state.view==='collection'||state.view==='dashboard') render();
+  }
+}
+
 /* ============================================================
    4. LEITNER-LOGIK (5 Boxen)
    ============================================================ */
@@ -422,6 +484,69 @@ function grade(b, correct){
   else { b.box=1; b.wrong=(b.wrong||0)+1; b.due=Date.now()+6*3600*1000; }
   b.lastReviewed=Date.now();
   return {before, after:b.box, mastered:(correct && b.box===5 && before<5)};
+}
+
+/* ============================================================
+   4b. GAMIFICATION — XP, Level, Streak, Abzeichen
+   ============================================================ */
+const GAME_KEY='federbox.game';
+const LEVEL_NAMES=['','Eierschale','Nestling','Ästling','Pieper','Singvogel','Spottdrossel','Adlerauge','Eulen-Weisheit','Meistervogel','Vogelflüsterer'];
+function xpForLevel(l){ return 40*l*l; } // kumulative XP-Schwelle für Level l
+const game = (()=>{
+  try{ const g=JSON.parse(localStorage.getItem(GAME_KEY)||'{}');
+    return {xp:g.xp||0,streak:g.streak||0,lastDay:g.lastDay||'',best:g.best||0,sessions:g.sessions||0,badges:g.badges||[],maxCombo:g.maxCombo||0,combo:0};
+  }catch(e){ return {xp:0,streak:0,lastDay:'',best:0,sessions:0,badges:[],maxCombo:0,combo:0}; }
+})();
+function saveGame(){ try{ localStorage.setItem(GAME_KEY,JSON.stringify({xp:game.xp,streak:game.streak,lastDay:game.lastDay,best:game.best,sessions:game.sessions,badges:game.badges,maxCombo:game.maxCombo})); }catch(e){} }
+function gameLevel(){ let l=1; while(l<LEVEL_NAMES.length-1 && game.xp>=xpForLevel(l)) l++; return l; }
+function touchStreak(){
+  const today=new Date().toDateString();
+  if(game.lastDay===today) return;
+  const y=new Date(Date.now()-DAY).toDateString();
+  game.streak = (game.lastDay===y)? game.streak+1 : 1;
+  game.best=Math.max(game.best,game.streak);
+  game.lastDay=today; saveGame();
+  if(game.streak>1) toast(`🔥 ${game.streak} Tage in Folge!`, true);
+}
+function addXP(n){
+  const before=gameLevel();
+  game.xp+=n; saveGame();
+  const after=gameLevel();
+  if(after>before){ toast(`⬆️ Level ${after} · ${LEVEL_NAMES[after]}!`, true); confetti(); buzz([20,40,20]); }
+}
+const BADGES=[
+  {id:'first',   ic:'🐣', t:'Erster Vogel',    d:'Den ersten Vogel angelegt',          ok:()=>state.birds.length>=1},
+  {id:'ten',     ic:'🪺', t:'Volles Nest',     d:'10 Vögel in der Sammlung',           ok:()=>state.birds.length>=10},
+  {id:'master1', ic:'🥇', t:'Gemeistert',      d:'Ersten Vogel in Box 5 gebracht',     ok:()=>state.birds.some(b=>b.box===5)},
+  {id:'master5', ic:'🏆', t:'Meistersammler',  d:'5 Vögel gemeistert',                 ok:()=>state.birds.filter(b=>b.box===5).length>=5},
+  {id:'streak3', ic:'🔥', t:'Dranbleiber',     d:'3 Tage in Folge gelernt',            ok:()=>game.best>=3},
+  {id:'streak7', ic:'☀️', t:'Wochenchor',      d:'7 Tage in Folge gelernt',            ok:()=>game.best>=7},
+  {id:'combo5',  ic:'⚡', t:'Im Flow',          d:'5 richtige in Serie',                ok:()=>game.maxCombo>=5},
+  {id:'sess10',  ic:'🎓', t:'Fleißig',         d:'10 Lerneinheiten abgeschlossen',     ok:()=>game.sessions>=10},
+  {id:'lvl5',    ic:'🕊️', t:'Singvogel',       d:'Level 5 erreicht',                   ok:()=>gameLevel()>=5},
+];
+function checkBadges(){
+  let won=null;
+  for(const b of BADGES){ if(!game.badges.includes(b.id) && b.ok()){ game.badges.push(b.id); won=b; } }
+  if(won){ saveGame(); toast(`${won.ic} Abzeichen: ${won.t}!`, true); buzz([15,30,15]); }
+}
+function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+function confetti(){
+  const colors=['#2E6B4A','#CE9233','#5E9E72','#BC4F36','#3B8A59','#F4E6C9'];
+  const c=document.createElement('div'); c.className='confetti';
+  for(let i=0;i<46;i++){ const s=document.createElement('i');
+    s.style.left=(Math.random()*100)+'vw';
+    s.style.background=colors[(Math.random()*colors.length)|0];
+    s.style.animationDuration=(1.4+Math.random()*1.4)+'s';
+    s.style.animationDelay=(Math.random()*.4)+'s';
+    s.style.transform=`rotate(${Math.random()*360}deg)`;
+    c.appendChild(s); }
+  document.body.appendChild(c); setTimeout(()=>c.remove(),3200);
+}
+function comboPop(n){
+  const el=document.createElement('div'); el.className='combo-pop';
+  el.textContent = n>=5? `⚡ ${n}er-Serie!` : `${n} in Folge!`;
+  document.body.appendChild(el); setTimeout(()=>el.remove(),1000);
 }
 
 /* ============================================================
@@ -510,6 +635,19 @@ function renderDashboard(){
   const {counts}=setProgress(null);
   const hour=new Date().getHours();
   const greet = hour<11?'Guten Morgen':hour<18?'Hallo':'Guten Abend';
+  const lvl=gameLevel();
+  const prevXP=xpForLevel(lvl-1), nextXP=xpForLevel(lvl);
+  const span=Math.max(1,nextXP-prevXP);
+  const xpPct=Math.min(100,Math.round((game.xp-prevXP)/span*100));
+  const gamebar=`
+    <div class="gamebar">
+      <span class="statpill lvl"><span class="ic">🪶</span>Level ${lvl} · ${LEVEL_NAMES[lvl]}</span>
+      <span class="statpill flame"><span class="ic">🔥</span>${game.streak} ${game.streak===1?'Tag':'Tage'} Serie</span>
+      <div class="xpwrap">
+        <div class="xpbar"><i style="width:${xpPct}%"></i></div>
+        <div class="xplab"><span>${game.xp-prevXP} XP</span><span>${nextXP-prevXP} XP bis Level ${Math.min(lvl+1,LEVEL_NAMES.length-1)}</span></div>
+      </div>
+    </div>`;
 
   if(total===0){
     view.innerHTML = `
@@ -529,6 +667,7 @@ function renderDashboard(){
     <div class="hero">
       <h1>${greet}, <b>Schnucki</b></h1>
       <p class="lead">${ due? `<span class="num">${due}</span> ${due===1?'Vogel wartet':'Vögel warten'} heute auf dich.` : 'Alles gelernt für heute – schön! Du kannst trotzdem frei üben.' }</p>
+      ${gamebar}
       <div class="hero-actions">
         <button class="btn" onclick="startStudyPick(null)">${due?'Lernen starten':'Frei üben'}</button>
         <button class="btn ghost" onclick="setView('add')">Vögel hinzufügen</button>
@@ -554,6 +693,14 @@ function renderDashboard(){
 
     ${ state.sets.length? `<div class="section-title">Deine Sets</div>
       <div class="setlist">${state.sets.slice(0,3).map(setCardHTML).join('')}</div>`:''}
+
+    <div class="section-title">Abzeichen</div>
+    <div class="badges">
+      ${BADGES.map(b=>{const got=game.badges.includes(b.id);return `
+        <div class="badge-c card${got?'':' locked'}" title="${esc(b.d)}">
+          <div class="bi">${b.ic}</div><div class="bt">${esc(b.t)}</div><div class="bd">${esc(b.d)}</div>
+        </div>`;}).join('')}
+    </div>
   `;
 }
 
@@ -796,7 +943,7 @@ function openBird(id){
             <div style="flex:1"><div style="font-size:13.5px;font-weight:500">${esc(r.type||'Aufnahme')} ${r.q?`· Qualität ${esc(r.q)}`:''}</div>
               <div class="recmeta">${esc(r.loc||'')}${r.rec?' · '+esc(r.rec):''}${r.length?' · '+esc(r.length):''}</div></div>
           </div>`).join('')}</div>`
-          :`<p class="faint" style="font-size:13px">Keine Stimme gespeichert. ${b.la||b.en?'<a href="#" onclick="reloadSounds(\''+b.id+'\');return false">Stimmen laden</a>':''}</p>`}
+          :`<p class="faint" style="font-size:13px" id="nosnd">${(b.la||b.en)&&backendOk!==false?'<span class="spin" style="width:13px;height:13px;vertical-align:-2px"></span> Stimmen werden automatisch geladen…':'Keine Stimme gespeichert.'}</p>`}
 
         <div class="spread" style="margin-top:20px">
           <div class="boxctl">
@@ -817,6 +964,14 @@ function openBird(id){
   registerSpectro($('#spectro'));
   const url=b.sounds&&b.sounds[0]?b.sounds[0].url:null;
   $('#bigplay').onclick=()=>{ playUrl(url); };
+  // Stimmen fehlen? Automatisch nachladen, ohne dass der Nutzer etwas tun muss.
+  if((!b.sounds||!b.sounds.length)&&(b.la||b.en)&&backendOk!==false){
+    fetchSounds({la:b.la,en:b.en}).then(async sounds=>{
+      if(sounds.length){ b.sounds=sounds; await DB.put('birds',b);
+        if($('#nosnd')) openBird(id); }
+      else { const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gefunden.'; }
+    }).catch(e=>{ console.warn('Stimmen laden fehlgeschlagen:',e); const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; });
+  }
 }
 async function nudgeBox(id,d){
   const b=birdById(id); if(!b)return;
@@ -829,12 +984,6 @@ async function deleteBird(id){
   await DB.del('birds',id); state.birds=state.birds.filter(x=>x.id!==id);
   for(const s of state.sets){ if(s.birdIds.includes(id)){ s.birdIds=s.birdIds.filter(x=>x!==id); await DB.put('sets',s);} }
   closeModal(); toast('Gelöscht.'); render();
-}
-async function reloadSounds(id){
-  const b=birdById(id); if(!b)return; toast('Lade Stimmen…');
-  const sounds=await fetchSounds({la:b.la,en:b.en});
-  if(sounds.length){ b.sounds=sounds; await DB.put('birds',b); toast(`${sounds.length} Stimmen geladen.`); openBird(id); }
-  else toast('Keine Stimmen gefunden.');
 }
 
 function editSet(id){
@@ -919,7 +1068,8 @@ function beginStudy(setId, mode){
   if(queue.length===0){ queue=[...scope]; freeMode=true; } // nichts fällig → freies Üben
   // mischen
   for(let i=queue.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[queue[i],queue[j]]=[queue[j],queue[i]];}
-  study={set,scope,mode,queue,freeMode,total:queue.length,done:0,right:0,results:[]};
+  study={set,scope,mode,queue,freeMode,total:queue.length,done:0,right:0,results:[],xp:0};
+  game.combo=0;
   nextQuestion();
 }
 
@@ -1039,13 +1189,24 @@ function renderFlip(b,header){
   $('#g_no').onclick =()=>{ finishCard(b,false); setTimeout(()=>advance(b,false),300); };
 }
 
-// gemeinsame Bewertung: Box updaten, speichern, ggf. weiter
+// gemeinsame Bewertung: Box updaten, speichern, XP & Combo, ggf. weiter
 async function finishCard(b,correct,manualAdvance=false){
   const res=grade(b,correct);
   await DB.put('birds',b);
   study.done++; if(correct)study.right++;
   study.results.push({de:b.de,correct,box:b.box});
-  if(res.mastered) toast(`🥇 „${b.de}“ gemeistert!`, true);
+  touchStreak();
+  if(correct){
+    game.combo++; game.maxCombo=Math.max(game.maxCombo,game.combo); buzz(12);
+    let xp = 10 + Math.min(10, (game.combo-1)*2); // Combo-Bonus
+    if(game.combo>=2) comboPop(game.combo);
+    study.xp=(study.xp||0)+xp; addXP(xp);
+  } else {
+    game.combo=0; buzz([40,30,40]);
+    const card=$('.qcard'); if(card){ card.classList.add('shake'); setTimeout(()=>card.classList.remove('shake'),450); }
+  }
+  if(res.mastered){ toast(`🥇 „${b.de}“ gemeistert!`, true); confetti(); }
+  checkBadges();
   if(!manualAdvance && (study.mode==='mc'||study.mode==='listen')){
     setTimeout(()=>advance(b,correct), 1050);
   }
@@ -1061,11 +1222,18 @@ function advance(b,correct){
 function endStudy(){
   stopAudio();
   const acc=study.total? Math.round(study.right/study.results.length*100):0;
-  const moved=study.results.filter(r=>r.correct).length;
+  game.sessions++; saveGame(); checkBadges();
+  const bonus=15; addXP(bonus); // Abschluss-Bonus
+  const earned=(study.xp||0)+bonus;
+  if(acc>=80) confetti();
   view.innerHTML=`<div class="study"><div class="endcard card">
     <div class="eyebrow">${study.set?esc(study.set.name):'Lerneinheit'}${study.freeMode?' · freies Üben':''}</div>
     <div class="big" style="margin-top:8px">${acc}%</div>
     <div class="muted" style="margin-top:4px">${study.right} von ${study.results.length} richtig</div>
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <span class="statpill lvl">+${earned} XP</span>
+      <span class="statpill flame">🔥 ${game.streak} ${game.streak===1?'Tag':'Tage'}</span>
+    </div>
     <p class="fb ok" style="font-size:16px">${ acc>=90?'Stark! Die meisten wandern eine Box weiter. 🪶' : acc>=60?'Gut gemacht – dranbleiben lohnt sich.' : 'Übung macht den Vogelkenner. 🐦' }</p>
     <div class="row" style="justify-content:center;margin-top:18px">
       <button class="btn" onclick="startStudyPick('${study.set?study.set.id:''}')">Nochmal</button>
@@ -1094,7 +1262,7 @@ $('#cta-study').onclick=()=>startStudyPick(null);
   try{ await DB.open(); await loadAll(); }
   catch(e){ console.error(e); }
   render();
-  pingBackend(); // im Hintergrund
+  pingBackend().then(ok=>{ if(ok) autoSyncSounds(); }); // Stimmen im Hintergrund nachladen
 })();
 window.setView=setView; // für inline-onclick
 </script>
