@@ -218,6 +218,9 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 .endcard .big{font-family:var(--display);font-size:46px;font-weight:500;color:var(--primary)}
 .fb{font-family:var(--display);font-size:18px;font-weight:500;margin-top:14px;min-height:24px}
 .fb.ok{color:var(--primary)} .fb.no{color:var(--robin)}
+.nextbtn{margin-top:16px;padding:11px 24px;border-radius:999px;background:var(--primary);color:#fff;font-weight:600;font-size:14px;box-shadow:0 1px 2px rgba(22,36,28,.12);transition:transform .12s,background .15s}
+.nextbtn:hover{background:var(--primary-2)}
+.nextbtn:active{transform:translateY(1px)}
 
 /* ---------- Modal ---------- */
 .scrim{position:fixed;inset:0;z-index:60;background:rgba(22,36,28,.42);backdrop-filter:blur(3px);
@@ -235,6 +238,19 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 .modal .mbody{padding:22px}
 .modal .close{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:999px;background:rgba(251,252,250,.92);
   display:grid;place-items:center;backdrop-filter:blur(4px);box-shadow:var(--shadow)}
+/* Image carousel */
+.carousel{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:var(--surface-2)}
+.carousel img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0;opacity:0;transition:opacity .3s}
+.carousel img.active{opacity:1;position:relative}
+.carousel .arr{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:999px;
+  background:rgba(251,252,250,.88);backdrop-filter:blur(4px);display:grid;place-items:center;
+  box-shadow:var(--shadow);font-size:16px;z-index:2;opacity:0;transition:opacity .2s}
+.carousel:hover .arr{opacity:1}
+.carousel .arr.l{left:10px}
+.carousel .arr.r{right:10px}
+.carousel .dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:2}
+.carousel .dots i{width:7px;height:7px;border-radius:99px;background:rgba(255,255,255,.5);transition:background .2s}
+.carousel .dots i.active{background:#fff}
 .reclist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
 .recrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
 .recrow .rp{width:40px;height:40px;border-radius:999px;background:var(--primary);color:#fff;display:grid;place-items:center;flex:0 0 auto}
@@ -392,18 +408,53 @@ async function px(service, params){
 // damit keine Personen, Orte o.ä. auftauchen (z.B. bei „Kuckuck“).
 async function searchBirds(term){
   const data = await px('wiki', {
-    action:'query', generator:'search', gsrsearch:`${term} hastemplate:"Taxobox"`, gsrlimit:8, gsrnamespace:0,
+    action:'query', generator:'search', gsrsearch:`${term} hastemplate:"Taxobox"`, gsrlimit:12, gsrnamespace:0,
     prop:'pageimages|pageprops|extracts', piprop:'thumbnail', pithumbsize:480,
     exintro:1, explaintext:1, exsentences:2, exlimit:'max'
   });
   const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
   pages.sort((a,b)=>(a.index??99)-(b.index??99));
-  return pages
+  const cands = pages
     .filter(p=>!(p.pageprops && 'disambiguation' in p.pageprops)) // BKL-Seiten (z.B. „Star“) aussortieren
     .map(p=>({
       title:p.title, qid:p.pageprops?.wikibase_item||null,
       image:p.thumbnail?.source||null, extract:p.extract||''
     }));
+
+  // Nur echte Vögel (Aves) auf Artniveau behalten.
+  // Prüfung über Wikidata: Vogelspezifische Properties (eBird, IOC)
+  // und Taxon-Rang = Art (Q7432) oder Unterart (Q68947).
+  return filterBirds(cands);
+}
+
+// Vogelfilter über Wikidata: prüft ob Kandidaten tatsächlich Vögel auf Artniveau sind.
+async function filterBirds(cands){
+  const withQid = cands.filter(c=>c.qid);
+  if(!withQid.length) return []; // Ohne QID keine Validierung möglich → nichts anzeigen
+  const qids = [...new Set(withQid.map(c=>c.qid))];
+  try{
+    const wd = await px('wikidata',{
+      action:'wbgetentities', ids:qids.join('|'),
+      props:'claims', languages:'en'
+    });
+    const entities = wd?.entities || {};
+    const validQids = new Set();
+    for(const qid of qids){
+      const ent = entities[qid];
+      if(!ent || !ent.claims) continue;
+      // Vogelspezifische Properties: P3444 (eBird), P4526 (IOC), P10243 (Avibase)
+      const isBird = !!(ent.claims.P3444 || ent.claims.P4526 || ent.claims.P10243);
+      if(!isBird) continue;
+      // Taxon-Rang prüfen (P105): Q7432=Art, Q68947=Unterart
+      const rank = ent.claims.P105?.[0]?.mainsnak?.datavalue?.value?.id;
+      if(rank && rank!=='Q7432' && rank!=='Q68947') continue; // Gattung/Familie etc. ausschließen
+      validQids.add(qid);
+    }
+    return cands.filter(c => c.qid && validQids.has(c.qid));
+  }catch(e){
+    // Bei Fehler: Fallback auf alle Kandidaten (besser als nichts zeigen)
+    return cands;
+  }
 }
 
 // Klammerzusatz aus Wikipedia-Titeln entfernen: „Star (Art)“ → „Star“
@@ -419,7 +470,9 @@ async function enrichBird(cand){
       if(ent){
         en = ent.labels?.en?.value || null;
         const p225 = ent.claims?.P225?.[0]?.mainsnak?.datavalue?.value;
-        if(p225) la = p225;
+        // Nur vollständige Artnamen übernehmen (Gattung + Epitheton),
+        // z.B. „Sitta europaea" – reine Gattungsnamen wie „Sitta" ignorieren.
+        if(p225 && p225.trim().split(/\s+/).length >= 2) la = p225;
         // Deutscher Name: der Wikipedia-Titel ist verlässlich deutsch. Das
         // Wikidata-Label ist bei Taxa oft nur der wissenschaftliche Name –
         // es dient nur als Ersatz, falls der Titel selbst wissenschaftlich ist.
@@ -851,13 +904,16 @@ function renderAdd(){
     };
   } else {
     body.innerHTML=`
-      <div class="card" style="padding:22px;max-width:560px">
-        <h3 style="font-size:21px">Häufige Gartenvögel</h3>
-        <p class="muted" style="font-size:14px;margin:8px 0 2px">Lädt ein fertiges Set mit zehn vertrauten Arten – Bild, Namen und Stimmen inklusive. Braucht das Backend (Suche).</p>
-        <ul class="muted" style="font-size:13px;columns:2;margin:14px 0">
-          ${EXAMPLES.map(e=>`<li>${esc(e)}</li>`).join('')}
-        </ul>
-        <button class="btn" onclick="loadExamples()">Beispiel-Set laden</button>
+      <div style="display:flex;flex-direction:column;gap:14px;max-width:600px">
+        ${Object.entries(BIRD_LISTS).map(([name,birds])=>`
+        <div class="card" style="padding:20px">
+          <h3 style="font-size:19px">${esc(name)}</h3>
+          <p class="muted" style="font-size:13px;margin:6px 0 2px">${birds.length} Arten – Bild, Namen und Stimmen werden automatisch geholt.</p>
+          <ul class="muted" style="font-size:12.5px;columns:2;margin:10px 0 14px;padding-left:18px">
+            ${birds.map(e=>`<li>${esc(e)}</li>`).join('')}
+          </ul>
+          <button class="btn sm" onclick="loadBirdList('${esc(name)}')">Set laden</button>
+        </div>`).join('')}
       </div>`;
   }
 }
@@ -891,6 +947,13 @@ async function addCandidate(i){
 }
 
 const EXAMPLES=['Kohlmeise','Amsel','Rotkehlchen','Buchfink','Blaumeise','Kleiber','Zaunkönig','Star','Singdrossel','Stieglitz'];
+const BIRD_LISTS={
+  'Gartenvögel':['Kohlmeise','Amsel','Rotkehlchen','Buchfink','Blaumeise','Kleiber','Zaunkönig','Star','Singdrossel','Stieglitz'],
+  'Waldvögel':['Buntspecht','Eichelhäher','Waldkauz','Schwarzspecht','Tannenmeise','Haubenmeise','Wintergoldhähnchen','Waldlaubsänger','Pirol','Trauerschnäpper'],
+  'Wasservögel':['Stockente','Graureiher','Blässhuhn','Haubentaucher','Eisvogel','Kormoran','Teichhuhn','Höckerschwan','Reiherente','Graugans'],
+  'Greifvögel':['Mäusebussard','Turmfalke','Sperber','Habicht','Rotmilan','Schwarzmilan','Wanderfalke','Wespenbussard','Rohrweihe','Baumfalke'],
+  'Feldvögel':['Feldlerche','Goldammer','Kiebitz','Rebhuhn','Neuntöter','Dorngrasmücke','Braunkehlchen','Grauammer','Wachtel','Schafstelze']
+};
 // Mehrdeutige Namen brauchen einen präziseren Suchbegriff (Wikipedia-Artikel).
 const SEARCH_TERM={'Star':'Star (Art)'};
 // Aus den Suchtreffern den ersten echten Vogel (mit wiss. Namen) übernehmen.
@@ -918,6 +981,27 @@ async function loadExamples(){
     const s={id:uid(),name:'Gartenvögel',description:'Beispiel-Set',birdIds:addedIds,created:Date.now()};
     await DB.put('sets',s); state.sets.push(s);
     toast(`${added} Vögel + Set „Gartenvögel“ geladen.`, true);
+  }
+  setView('dashboard');
+}
+async function loadBirdList(listName){
+  const birds=BIRD_LISTS[listName]; if(!birds)return;
+  toast(`Lade „${listName}"…`);
+  let added=0; const addedIds=[];
+  for(const name of birds){
+    const exist=state.birds.find(b=>b.de.toLowerCase()===name.toLowerCase());
+    if(exist){ addedIds.push(exist.id); continue; }
+    try{
+      const cands=await searchBirds(SEARCH_TERM[name]||name);
+      const b=await enrichFirstSpecies(cands);
+      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; }
+    }catch(e){ toast('Backend nicht erreichbar – Listen brauchen die Suche.'); break; }
+  }
+  if(addedIds.length){
+    const existing=state.sets.find(s=>s.name===listName);
+    if(existing){ existing.birdIds=[...new Set([...existing.birdIds,...addedIds])]; await DB.put('sets',existing); }
+    else { const s={id:uid(),name:listName,description:`Vorgefertigte Liste`,birdIds:addedIds,created:Date.now()}; await DB.put('sets',s); state.sets.push(s); }
+    toast(`${added?added+' neue Vögel + ':''}Set „${listName}" geladen.`, true);
   }
   setView('dashboard');
 }
@@ -979,10 +1063,21 @@ modalRoot.addEventListener('click',e=>{ if(e.target.classList.contains('scrim'))
 function openBird(id){
   const b=birdById(id); if(!b)return;
   const inSets=state.sets.filter(s=>s.birdIds.includes(id)).map(s=>s.name);
+  const images = b.images && b.images.length ? b.images : (b.image ? [b.image] : []);
+  _carouselIdx=0;
   modalRoot.innerHTML=`
     <div class="scrim"><div class="modal">
       <div class="mhead">
-        ${b.image?`<img src="${esc(b.image)}" alt="${esc(b.de)}">`:`<div style="aspect-ratio:16/9;background:var(--surface-2);display:grid;place-items:center;font-size:42px">🪶</div>`}
+        ${images.length?`
+          <div class="carousel" id="birdCarousel">
+            ${images.map((img,i)=>`<img src="${esc(img)}" alt="${esc(b.de)}" class="${i===0?'active':''}">`).join('')}
+            ${images.length>1?`
+              <button class="arr l" onclick="carouselNav(-1)">‹</button>
+              <button class="arr r" onclick="carouselNav(1)">›</button>
+              <div class="dots">${images.map((_,i)=>`<i class="${i===0?'active':''}"></i>`).join('')}</div>
+            `:''}
+          </div>
+        `:`<div style="aspect-ratio:16/9;background:var(--surface-2);display:grid;place-items:center;font-size:42px">🪶</div>`}
         <button class="close" onclick="closeModal()" aria-label="Schließen">✕</button>
       </div>
       <div class="mbody">
@@ -1022,6 +1117,12 @@ function openBird(id){
   registerSpectro($('#spectro'));
   const url=b.sounds&&b.sounds[0]?b.sounds[0].url:null;
   $('#bigplay').onclick=()=>{ playUrl(url); };
+  // Bilder nachladen falls nur ein Bild vorhanden
+  if((!b.images||b.images.length<=1)&&b.la){
+    fetchBirdImages(b).then(imgs=>{
+      if(imgs&&imgs.length>1){ b.images=imgs; DB.put('birds',b); if($('#birdCarousel')) openBird(id); }
+    }).catch(()=>{});
+  }
   // Stimmen fehlen? Automatisch nachladen, ohne dass der Nutzer etwas tun muss.
   if((!b.sounds||!b.sounds.length)&&(b.la||b.en)&&backendOk!==false){
     fetchSounds({la:b.la,en:b.en}).then(async sounds=>{
@@ -1030,6 +1131,34 @@ function openBird(id){
       else { const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gefunden.'; }
     }).catch(e=>{ console.warn('Stimmen laden fehlgeschlagen:',e); const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; });
   }
+}
+let _carouselIdx=0;
+function carouselNav(dir){
+  const c=$('#birdCarousel'); if(!c)return;
+  const imgs=c.querySelectorAll('img');
+  const dots=c.querySelectorAll('.dots i');
+  if(imgs.length<=1)return;
+  imgs[_carouselIdx].classList.remove('active');
+  if(dots[_carouselIdx])dots[_carouselIdx].classList.remove('active');
+  _carouselIdx=(_carouselIdx+dir+imgs.length)%imgs.length;
+  imgs[_carouselIdx].classList.add('active');
+  if(dots[_carouselIdx])dots[_carouselIdx].classList.add('active');
+}
+async function fetchBirdImages(b){
+  if(!b.la)return [];
+  try{
+    const data=await px('wiki',{
+      action:'query', generator:'images', titles:b.la,
+      gimlimit:8, prop:'imageinfo', iiprop:'url', iiurlwidth:520
+    });
+    const pages=(data?.query?.pages) ? Object.values(data.query.pages) : [];
+    const imgs=pages
+      .filter(p=>p.imageinfo&&p.imageinfo[0]&&/\.(jpg|jpeg|png|webp)/i.test(p.title||''))
+      .map(p=>p.imageinfo[0].thumburl||p.imageinfo[0].url)
+      .filter(Boolean);
+    if(b.image&&!imgs.includes(b.image)) imgs.unshift(b.image);
+    return imgs.slice(0,6);
+  }catch(e){return [];}
 }
 async function nudgeBox(id,d){
   const b=birdById(id); if(!b)return;
@@ -1266,7 +1395,18 @@ async function finishCard(b,correct,manualAdvance=false){
   if(res.mastered){ toast(`🥇 „${b.de}“ gemeistert!`, true); confetti(); }
   checkBadges();
   if(!manualAdvance && (study.mode==='mc'||study.mode==='listen')){
-    setTimeout(()=>advance(b,correct), 1050);
+    if(correct){
+      setTimeout(()=>advance(b,correct), 1050);
+    } else {
+      // Bei Fehler: "Nächste"-Button anzeigen statt auto-advance
+      const fb=$('#fb');
+      if(fb&&!fb.querySelector('.nextbtn')){
+        const nbtn=document.createElement('button');
+        nbtn.className='nextbtn'; nbtn.textContent='Nächste →';
+        nbtn.onclick=()=>advance(b,correct);
+        fb.appendChild(nbtn);
+      }
+    }
   }
 }
 function advance(b,correct){
@@ -1308,6 +1448,10 @@ document.addEventListener('keydown',e=>{
   if((study.mode==='mc'||study.mode==='listen')&&!study._answered&&/^[1-4]$/.test(e.key)){
     const btn=$$('#choices .choice')[+e.key-1]; if(btn)btn.click();
   }
+  // Enter/Space advances after wrong answer
+  if(study._answered&&(e.key==='Enter'||e.key===' ')){
+    const nb=document.querySelector('.nextbtn'); if(nb){e.preventDefault();nb.click();}
+  }
 });
 
 /* ============================================================
@@ -1323,6 +1467,8 @@ $('#cta-study').onclick=()=>startStudyPick(null);
   pingBackend().then(ok=>{ if(ok){ autoSyncSounds(); } repairBirds(); }); // Stimmen & Korrekturen im Hintergrund
 })();
 window.setView=setView; // für inline-onclick
+window.loadBirdList=loadBirdList;
+window.carouselNav=carouselNav;
 </script>
 </body>
 </html>
