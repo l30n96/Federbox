@@ -387,33 +387,46 @@ async function px(service, params){
   return r.json();
 }
 
-// Kandidaten über die deutsche Wikipedia suchen
+// Kandidaten über die deutsche Wikipedia suchen.
+// hastemplate:"Taxobox" beschränkt die Treffer auf Arten-Artikel,
+// damit keine Personen, Orte o.ä. auftauchen (z.B. bei „Kuckuck“).
 async function searchBirds(term){
   const data = await px('wiki', {
-    action:'query', generator:'search', gsrsearch:term, gsrlimit:8, gsrnamespace:0,
+    action:'query', generator:'search', gsrsearch:`${term} hastemplate:"Taxobox"`, gsrlimit:8, gsrnamespace:0,
     prop:'pageimages|pageprops|extracts', piprop:'thumbnail', pithumbsize:480,
     exintro:1, explaintext:1, exsentences:2, exlimit:'max'
   });
   const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
   pages.sort((a,b)=>(a.index??99)-(b.index??99));
-  return pages.map(p=>({
-    title:p.title, qid:p.pageprops?.wikibase_item||null,
-    image:p.thumbnail?.source||null, extract:p.extract||''
-  }));
+  return pages
+    .filter(p=>!(p.pageprops && 'disambiguation' in p.pageprops)) // BKL-Seiten (z.B. „Star“) aussortieren
+    .map(p=>({
+      title:p.title, qid:p.pageprops?.wikibase_item||null,
+      image:p.thumbnail?.source||null, extract:p.extract||''
+    }));
 }
+
+// Klammerzusatz aus Wikipedia-Titeln entfernen: „Star (Art)“ → „Star“
+function cleanTitle(t){ return String(t||'').replace(/\s*\([^)]*\)\s*$/,'').trim(); }
 
 // Einen Kandidaten anreichern: wiss. Name (Wikidata) + Laute (Xeno-canto)
 async function enrichBird(cand){
-  let la=null, en=null, de=cand.title, image=cand.image;
+  let la=null, en=null, de=cleanTitle(cand.title), image=cand.image;
   if(cand.qid){
     try{
       const wd = await px('wikidata',{action:'wbgetentities',ids:cand.qid,props:'labels|claims',languages:'de|en'});
       const ent = wd?.entities?.[cand.qid];
       if(ent){
-        de = ent.labels?.de?.value || de;
         en = ent.labels?.en?.value || null;
         const p225 = ent.claims?.P225?.[0]?.mainsnak?.datavalue?.value;
         if(p225) la = p225;
+        // Deutscher Name: der Wikipedia-Titel ist verlässlich deutsch. Das
+        // Wikidata-Label ist bei Taxa oft nur der wissenschaftliche Name –
+        // es dient nur als Ersatz, falls der Titel selbst wissenschaftlich ist.
+        const label = ent.labels?.de?.value;
+        if(la && de.toLowerCase()===la.toLowerCase() && label && label.toLowerCase()!==la.toLowerCase()){
+          de = cleanTitle(label);
+        }
         if(!image){
           const p18 = ent.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
           if(p18) image = 'https://commons.wikimedia.org/wiki/Special:FilePath/'+encodeURIComponent(p18)+'?width=520';
@@ -469,6 +482,40 @@ async function autoSyncSounds(){
   soundSyncRunning=false;
   if(loaded){
     toast(`🎶 Stimmen für ${loaded} ${loaded===1?'Vogel':'Vögel'} automatisch geladen.`);
+    if(state.view==='collection'||state.view==='dashboard') render();
+  }
+}
+
+// Bereits gespeicherte Vögel reparieren:
+//  - falscher deutscher Name (wiss. Name gespeichert) → aus dem Wikipedia-Link rekonstruieren
+//  - kaputte Einträge ohne Art & Bild (z.B. „Star“ über die BKL-Seite) → neu nachschlagen
+let repairRunning=false;
+async function repairBirds(){
+  if(repairRunning) return;
+  repairRunning=true;
+  let fixed=0;
+  for(const b of state.birds){
+    try{
+      if(b.la && b.de && b.de.toLowerCase()===b.la.toLowerCase() && b.wiki){
+        const title=cleanTitle(decodeURIComponent(String(b.wiki).split('/wiki/')[1]||'').replace(/_/g,' '));
+        if(title && title.toLowerCase()!==b.la.toLowerCase()){
+          b.de=title; await DB.put('birds',b); fixed++; continue;
+        }
+      }
+      if(!b.la && !b.image && backendOk){
+        const cands=await searchBirds(SEARCH_TERM[b.de]||b.de);
+        const fresh=await enrichFirstSpecies(cands);
+        if(fresh && fresh.la){
+          b.de=fresh.de; b.la=fresh.la; b.en=fresh.en; b.image=fresh.image; b.wiki=fresh.wiki;
+          if(!b.sounds||!b.sounds.length) b.sounds=fresh.sounds;
+          await DB.put('birds',b); fixed++;
+        }
+      }
+    }catch(e){ console.warn('Reparatur übersprungen:',e); }
+  }
+  repairRunning=false;
+  if(fixed){
+    toast(`🛠️ ${fixed} ${fixed===1?'Eintrag':'Einträge'} automatisch korrigiert.`);
     if(state.view==='collection'||state.view==='dashboard') render();
   }
 }
@@ -844,6 +891,16 @@ async function addCandidate(i){
 }
 
 const EXAMPLES=['Kohlmeise','Amsel','Rotkehlchen','Buchfink','Blaumeise','Kleiber','Zaunkönig','Star','Singdrossel','Stieglitz'];
+// Mehrdeutige Namen brauchen einen präziseren Suchbegriff (Wikipedia-Artikel).
+const SEARCH_TERM={'Star':'Star (Art)'};
+// Aus den Suchtreffern den ersten echten Vogel (mit wiss. Namen) übernehmen.
+async function enrichFirstSpecies(cands){
+  for(const c of cands.slice(0,3)){
+    const b=await enrichBird(c);
+    if(b.la) return b;
+  }
+  return cands[0] ? enrichBird(cands[0]) : null;
+}
 async function loadExamples(){
   toast('Lade Beispielvögel…');
   let added=0; const addedIds=[];
@@ -851,8 +908,9 @@ async function loadExamples(){
     const exist=state.birds.find(b=>b.de.toLowerCase()===name.toLowerCase());
     if(exist){ addedIds.push(exist.id); continue; }
     try{
-      const cands=await searchBirds(name);
-      if(cands[0]){ const b=await enrichBird(cands[0]); await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; }
+      const cands=await searchBirds(SEARCH_TERM[name]||name);
+      const b=await enrichFirstSpecies(cands);
+      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; }
     }catch(e){ toast('Backend nicht erreichbar – Beispiele brauchen die Suche.'); break; }
   }
   if(added){
@@ -1262,7 +1320,7 @@ $('#cta-study').onclick=()=>startStudyPick(null);
   try{ await DB.open(); await loadAll(); }
   catch(e){ console.error(e); }
   render();
-  pingBackend().then(ok=>{ if(ok) autoSyncSounds(); }); // Stimmen im Hintergrund nachladen
+  pingBackend().then(ok=>{ if(ok){ autoSyncSounds(); } repairBirds(); }); // Stimmen & Korrekturen im Hintergrund
 })();
 window.setView=setView; // für inline-onclick
 </script>
