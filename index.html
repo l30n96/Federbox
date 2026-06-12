@@ -1327,7 +1327,7 @@ function openBird(id){
         if($('#nosnd')) openBird(id); }
       else { const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gefunden.'; }
     }).catch(e=>{ console.warn('Stimmen laden fehlgeschlagen:',e); const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; });
-  } else if(b.sounds&&b.sounds.length===3&&b.sounds.length<6&&(b.la||b.en)&&apiLimiter.remaining('xc')>3){
+  } else if(b.sounds&&b.sounds.length===3&&(b.la||b.en)&&apiLimiter.remaining('xc')>3){
     // Lazy-load more sounds when budget allows
     fetchSounds({la:b.la,en:b.en}, 6).then(async sounds=>{
       if(sounds.length>b.sounds.length){ b.sounds=sounds; await DB.put('birds',b); }
