@@ -434,7 +434,7 @@ async function px(service, params){
 // Tracks calls per service per minute to avoid hitting upstream limits.
 // Xeno-canto is more restrictive than Wikipedia, so lower budget.
 const apiLimiter = (function(){
-  const budgets = { xc: 8, wiki: 25, wiki_en: 25, wikidata: 20, commons: 20 };
+  const budgets = { xc: 10, wiki: 25, wiki_en: 25, wikidata: 30, commons: 20 };
   const windowMs = 60_000; // 1 minute window
   const calls = {}; // service → [timestamps]
 
@@ -459,9 +459,9 @@ const apiLimiter = (function(){
       const limit = budgets[service] || 20;
       return Math.max(0, limit - (calls[service]||[]).length);
     },
-    async waitForSlot(service){
+    async waitForSlot(service, timeout){
       // Wait until oldest call expires from window
-      const maxWait = 15_000;
+      const maxWait = timeout || 30_000;
       const start = Date.now();
       while(!this.canCall(service)){
         if(Date.now()-start > maxWait) throw new Error('Rate limit timeout');
@@ -541,7 +541,7 @@ async function _runEnrichQueue(){
   if(_enrichRunning) return;
   _enrichRunning = true;
   let enriched = 0;
-  const maxRetries = 2;
+  const maxRetries = 3;
   const retryCount = new Map(); // id → attempts
 
   while(_enrichQueue.length){
@@ -549,12 +549,17 @@ async function _runEnrichQueue(){
     // Skip if bird was removed or already enriched
     const current = state.birds.find(x=>x.id===b.id);
     if(!current || !current.pending) continue;
-    // Respect rate limits — wait until budget available
-    while(!apiLimiter.canCall('wiki') || !apiLimiter.canCall('xc')){
-      await new Promise(r=>setTimeout(r, 5000));
+    // Respect rate limits — wait until budget available for ALL services
+    // Each bird needs: wiki (search) + wikidata (filter+enrich) + xc (sounds)
+    const maxWait = 90_000;
+    const waitStart = Date.now();
+    while(!apiLimiter.canCall('wiki') || !apiLimiter.canCall('wikidata') || !apiLimiter.canCall('xc')){
+      if(Date.now()-waitStart > maxWait) break;
+      await new Promise(r=>setTimeout(r, 3000));
     }
     try{
-      await _throttleDelay(400);
+      // Longer delay between birds to stay well within rate limits
+      await _throttleDelay(1200);
       const cands = await searchBirds(SEARCH_TERM[b.de]||b.de);
       const fresh = await enrichFirstSpecies(cands);
       if(fresh){
@@ -573,14 +578,14 @@ async function _runEnrichQueue(){
       const attempts = (retryCount.get(b.id)||0) + 1;
       retryCount.set(b.id, attempts);
       if(attempts <= maxRetries){
-        // Re-queue at end so other birds can proceed
+        // Re-queue at end so other birds can proceed; wait longer on retry
         _enrichQueue.push(b);
+        await new Promise(r=>setTimeout(r, 5000 * attempts));
       } else {
         // Give up after max retries — mark as no longer pending
         current.pending=false;
         await DB.put('birds', current);
       }
-      await new Promise(r=>setTimeout(r, 3000));
     }
   }
   _enrichRunning = false;
