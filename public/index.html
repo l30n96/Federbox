@@ -813,13 +813,23 @@ async function autoSyncSounds(){
   soundSyncPending=false;
   toast(`🎵 Lade Stimmen für ${missing.length} ${missing.length===1?'Vogel':'Vögel'}…`);
   let loaded=0;
+  const loadedBirds=[];
   for(const b of missing){
-    // Stop if xeno-canto budget is low
-    if(!apiLimiter.canCall('xc')){ break; }
+    // Xeno-canto-Budget respektieren: warten statt abbrechen, damit auch
+    // große Sammlungen (>10 Vögel) in einem Durchlauf vollständig werden.
+    if(!apiLimiter.canCall('xc')){
+      try{ await apiLimiter.waitForSlot('xc', 90_000); }
+      catch(e){ console.warn('Stimmen-Sync pausiert (Rate-Limit):',e); break; }
+    }
     try{
       const sounds=await fetchSounds({la:b.la,en:b.en}, 3);
-      if(sounds.length){ b.sounds=sounds; b.synced=false; await DB.put('birds',b); loaded++; cacheBirdProfiles([b]); }
+      if(sounds.length){ b.sounds=sounds; b.synced=false; await DB.put('birds',b); loaded++; loadedBirds.push(b); }
     }catch(e){ console.warn('Stimmen-Sync abgebrochen:',e); break; }
+  }
+  // Geladene Stimmen gebündelt in den Server-Cache hochladen (max. 25 pro Request),
+  // damit sie beim nächsten Verbinden auf jedem Gerät sofort verfügbar sind.
+  for(let i=0; i<loadedBirds.length; i+=25){
+    await cacheBirdProfiles(loadedBirds.slice(i, i+25));
   }
   soundSyncRunning=false;
   if(loaded){

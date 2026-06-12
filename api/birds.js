@@ -128,17 +128,35 @@ module.exports = async (req, res) => {
       if (!birds.length) return json(res, 400, { error: 'Keine Vogeldaten.' });
       if (birds.length > 50) return json(res, 400, { error: 'Maximal 50 Vögel pro Request.' });
 
+      const valid = birds.filter(b => b && b.de && String(b.de).trim());
+      if (!valid.length) return json(res, 400, { error: 'Keine gültigen Vogeldaten.' });
+
+      // Merge-on-write: vorhandene Profile zuerst laden, damit gute Daten
+      // (insbesondere sounds) nie von einem Client mit leeren/unvollständigen
+      // Daten überschrieben werden. Sonst verschwinden Stimmen aus dem Cache,
+      // sobald ein Gerät einen Vogel ohne geladene Laute hochsynct.
+      const existing = await kvPipeline(valid.map(b => ['GET', normKey(String(b.de).trim())]));
+
       const cmds = [];
       const names = [];
-      for (const b of birds) {
-        if (!b || !b.de) continue;
+      for (let i = 0; i < valid.length; i++) {
+        const b = valid[i];
         const name = String(b.de).trim();
-        if (!name) continue;
+        let old = null;
+        const item = existing[i];
+        if (item && !item.error && item.result) {
+          try { old = JSON.parse(item.result); } catch {}
+        }
         // Store only the profile data relevant for caching (no user-specific fields)
         const profile = {
-          de: b.de, la: b.la || null, en: b.en || null,
-          image: b.image || null, sounds: b.sounds || [],
-          wiki: b.wiki || null
+          de: b.de,
+          la: b.la || (old && old.la) || null,
+          en: b.en || (old && old.en) || null,
+          image: b.image || (old && old.image) || null,
+          sounds: (Array.isArray(b.sounds) && b.sounds.length)
+            ? b.sounds
+            : ((old && Array.isArray(old.sounds)) ? old.sounds : []),
+          wiki: b.wiki || (old && old.wiki) || null
         };
         const key = normKey(name);
         cmds.push(['SET', key, JSON.stringify(profile), 'EX', CACHE_TTL]);
