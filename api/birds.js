@@ -12,38 +12,55 @@
 //
 // Uses the same Upstash Redis as the community API.
 
-const KV_URL   = process.env.KV_REST_API_URL   || process.env.UPSTASH_REDIS_REST_URL   || '';
-const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+// Env-Werte robust einlesen: Whitespace und versehentlich mitkopierte
+// Anführungszeichen entfernen, Slash am Ende abschneiden. Wird zur
+// Request-Zeit gelesen, damit neue Vercel-Env-Vars sicher ankommen.
+function cleanEnv(v) {
+  return String(v || '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
+}
+function kvConfig() {
+  const url   = cleanEnv(process.env.KV_REST_API_URL   || process.env.UPSTASH_REDIS_REST_URL);
+  const token = cleanEnv(process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN);
+  return { url, token };
+}
 
 const CACHE_TTL = 60 * 60 * 24 * 90; // 90 days
 const KEY_PREFIX = 'bird:';
 const INDEX_KEY  = 'bird:__index';
 
 async function kv(cmd) {
-  const r = await fetch(KV_URL, {
+  const { url, token } = kvConfig();
+  const r = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KV_TOKEN },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: JSON.stringify(cmd),
   });
-  const j = await r.json();
-  if (j.error) throw new Error(j.error);
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && j.error) || ('KV HTTP ' + r.status));
+  if (!j || j.error) throw new Error((j && j.error) || 'KV: leere Antwort');
   return j.result;
 }
 
 // Pipeline: multiple commands in one HTTP request
 async function kvPipeline(cmds) {
-  const r = await fetch(KV_URL + '/pipeline', {
+  const { url, token } = kvConfig();
+  const r = await fetch(url + '/pipeline', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KV_TOKEN },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: JSON.stringify(cmds),
   });
-  const j = await r.json();
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && j.error) || ('KV-Pipeline HTTP ' + r.status));
+  if (!Array.isArray(j)) throw new Error((j && j.error) || 'KV-Pipeline: unerwartete Antwort');
   return j;
 }
 
-const json = (res, status, data) => {
+// Wichtig: standardmäßig NICHT cachen. Vorher wurden auch 503-/Fehler-
+// und Cache-Miss-Antworten 1 h lang vom Vercel-CDN ausgeliefert –
+// dadurch wirkte das Caching „kaputt", obwohl Redis längst befüllt war.
+const json = (res, status, data, cacheable) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+  res.setHeader('Cache-Control', cacheable ? 'public, max-age=300, s-maxage=300' : 'no-store');
   return res.status(status).send(JSON.stringify(data));
 };
 
@@ -63,6 +80,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
+  const { url: KV_URL, token: KV_TOKEN } = kvConfig();
   if (!KV_URL || !KV_TOKEN) {
     return json(res, 503, { error: 'Cache nicht konfiguriert (kein KV-Store).' });
   }
@@ -83,12 +101,17 @@ module.exports = async (req, res) => {
 
       const birds = {};
       for (let i = 0; i < names.length; i++) {
-        const val = results[i]?.result;
+        const item = results[i];
+        if (item && item.error) continue; // einzelner Befehl fehlgeschlagen
+        const val = item?.result;
         if (val) {
           try { birds[names[i]] = JSON.parse(val); } catch {}
         }
       }
-      return json(res, 200, { birds, cached: Object.keys(birds).length, total: names.length });
+      const hits = Object.keys(birds).length;
+      // Nur vollständige Treffer kurz cachen – Misses dürfen nie im CDN landen,
+      // sonst bleiben frisch gespeicherte Vögel unsichtbar.
+      return json(res, 200, { birds, cached: hits, total: names.length }, hits === names.length);
     }
 
     // List all cached bird names
@@ -127,7 +150,11 @@ module.exports = async (req, res) => {
       // Add all names to the index set
       cmds.push(['SADD', INDEX_KEY, ...names]);
 
-      await kvPipeline(cmds);
+      const results = await kvPipeline(cmds);
+      const failed = results.filter(x => x && x.error);
+      if (failed.length) {
+        return json(res, 502, { error: 'KV-Schreibfehler', detail: failed[0].error, stored: names.length - failed.length });
+      }
       return json(res, 200, { stored: names.length, names });
     }
 
