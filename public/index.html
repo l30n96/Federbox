@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#2E6B4A" />
+<title>Federbox · Vogelstimmen lernen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   FEDERBOX — Designsystem
+   Palette: "Morgenchor" — Dämmerung im Mischwald.
+   Kühles Morgennebel-Salbei statt Creme, Kiefern-Tinte statt
+   Schwarz, Waldgrün als Aktion, Morgengold als "gemeistert".
+   ============================================================ */
+:root{
+  --bg:#E7EEE6; --bg-2:#DDE7DB; --surface:#FBFCFA; --surface-2:#F1F5F0;
+  --ink:#16241C; --ink-2:#46554B; --ink-3:#7B897F; --line:#D4DED2;
+  --primary:#2E6B4A; --primary-2:#23533A; --primary-soft:#DBEADF;
+  --gold:#CE9233; --gold-soft:#F4E6C9; --robin:#BC4F36;
+  --b1:#A7B8AA; --b2:#86AC90; --b3:#5E9E72; --b4:#3B8A59; --b5:#CE9233;
+  --shadow:0 1px 2px rgba(22,36,28,.05), 0 8px 24px -12px rgba(22,36,28,.18);
+  --shadow-lg:0 2px 6px rgba(22,36,28,.06), 0 24px 60px -24px rgba(22,36,28,.30);
+  --r:14px; --r-lg:22px; --r-sm:9px;
+  --display:"Fraunces",Georgia,serif; --body:"Inter",system-ui,sans-serif; --mono:"JetBrains Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--body); color:var(--ink); line-height:1.5;
+  background:
+    radial-gradient(900px 500px at 88% -8%, #EFF4ED 0%, transparent 60%),
+    radial-gradient(700px 600px at -5% 8%, #E2ECE1 0%, transparent 55%),
+    var(--bg);
+  min-height:100dvh; -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea,select{font-family:inherit;font-size:15px;color:var(--ink)}
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:500;letter-spacing:-.01em;line-height:1.1}
+a{color:var(--primary)}
+::selection{background:var(--gold-soft)}
+
+/* ---------- Layout shell ---------- */
+.shell{max-width:1080px;margin:0 auto;padding:0 20px 120px}
+.topbar{
+  position:sticky;top:0;z-index:40;backdrop-filter:saturate(1.1) blur(10px);
+  background:linear-gradient(var(--bg), rgba(231,238,230,.78));
+  border-bottom:1px solid var(--line);
+}
+.topbar-in{max-width:1080px;margin:0 auto;padding:13px 20px;display:flex;align-items:center;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:600;font-size:20px;letter-spacing:-.02em}
+.brand .mark{width:30px;height:30px;flex:0 0 auto}
+.nav{display:flex;gap:2px;margin-left:6px}
+.nav button{
+  padding:8px 13px;border-radius:999px;font-size:14px;font-weight:500;color:var(--ink-2);
+  transition:background .15s,color .15s;
+}
+.nav button:hover{background:var(--surface-2)}
+.nav button.active{background:var(--ink);color:#fff}
+.spacer{flex:1}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;justify-content:center;
+  padding:10px 16px;border-radius:999px;font-weight:600;font-size:14px;
+  background:var(--primary);color:#fff;transition:transform .12s,background .15s,box-shadow .15s;
+  box-shadow:0 1px 2px rgba(22,36,28,.12);
+}
+.btn:hover{background:var(--primary-2)}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:none}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.gold{background:var(--gold);color:#3a2a08}
+.btn.gold:hover{background:#bb8329}
+.btn.danger{background:var(--surface);color:var(--robin);border:1px solid #E6CcC4}
+.btn.sm{padding:7px 12px;font-size:13px}
+.btn:disabled{opacity:.5;pointer-events:none}
+
+/* ---------- mobile nav ---------- */
+.menu-toggle{display:none}
+@media(max-width:720px){
+  .nav{
+    position:fixed;left:0;right:0;bottom:0;z-index:50;margin:0;gap:0;
+    background:var(--surface);border-top:1px solid var(--line);
+    padding:8px 8px calc(8px + env(safe-area-inset-bottom)); justify-content:space-around;
+    box-shadow:0 -8px 24px -16px rgba(22,36,28,.4);
+  }
+  .nav button{flex:1;border-radius:12px;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px}
+  .nav button.active{background:var(--primary-soft);color:var(--primary-2)}
+  .nav .nav-ic{width:21px;height:21px}
+  .topbar-cta{display:none}
+}
+.nav-ic{width:0;height:0}
+@media(min-width:721px){ .nav-ic{display:none} }
+
+/* ---------- Cards / generic ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.muted{color:var(--ink-2)}
+.faint{color:var(--ink-3)}
+.la{font-family:var(--mono);font-size:12px;color:var(--ink-3);font-style:normal}
+.section-title{font-size:13px;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:30px 2px 14px}
+
+/* ---------- Dashboard ---------- */
+.hero{margin:34px 0 8px;position:relative}
+.hero h1{font-size:clamp(34px,6vw,56px);font-weight:400}
+.hero h1 b{font-weight:600;font-style:italic;color:var(--primary)}
+.hero .lead{font-size:clamp(17px,2.4vw,21px);color:var(--ink-2);margin-top:12px;max-width:46ch}
+.hero .lead .num{font-weight:600;color:var(--ink);font-family:var(--display);font-style:italic}
+.hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.hero .btn{padding:13px 22px;font-size:15px}
+
+/* Karteikasten — die fünf Boxen */
+.kasten{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:26px 0 6px}
+.box{
+  position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 12px 13px;overflow:hidden;text-align:left;transition:transform .12s,box-shadow .15s;
+}
+.box:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
+.box .lid{position:absolute;left:0;top:0;height:5px;width:100%}
+.box .bn{font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.08em}
+.box .cnt{font-family:var(--display);font-size:30px;font-weight:500;line-height:1;margin-top:8px}
+.box .bl{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+@media(max-width:720px){ .kasten{grid-template-columns:repeat(5,1fr);gap:6px} .box{padding:11px 8px} .box .cnt{font-size:22px} .box .bl{display:none} }
+
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.stat{padding:16px 16px 15px}
+.stat .v{font-family:var(--display);font-size:28px;font-weight:500;line-height:1}
+.stat .k{font-size:12.5px;color:var(--ink-3);margin-top:5px}
+@media(max-width:560px){ .stats{grid-template-columns:repeat(2,1fr)} }
+
+/* ---------- Collection grid ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.bird{
+  text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  overflow:hidden;box-shadow:var(--shadow);transition:transform .12s,box-shadow .15s;display:flex;flex-direction:column
+}
+.bird:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.bird .ph{aspect-ratio:4/3;background:var(--surface-2);position:relative;overflow:hidden}
+.bird .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.bird .ph .noimg{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink-3)}
+.bird .meta{padding:11px 13px 13px}
+.bird .dn{font-family:var(--display);font-size:17px;font-weight:500;line-height:1.15}
+.bird .ph .badge{position:absolute;top:8px;right:8px;background:rgba(251,252,250,.92);backdrop-filter:blur(4px);
+  border-radius:999px;padding:3px 9px;font-family:var(--mono);font-size:11px;font-weight:500;display:flex;align-items:center;gap:5px}
+.dot{width:8px;height:8px;border-radius:999px;display:inline-block}
+.bird .snd{position:absolute;bottom:8px;left:8px;width:30px;height:30px;border-radius:999px;background:rgba(22,36,28,.62);
+  color:#fff;display:grid;place-items:center;backdrop-filter:blur(2px)}
+
+/* ---------- Sets ---------- */
+.setlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.setcard{padding:18px;display:flex;flex-direction:column;gap:14px}
+.setcard h3{font-size:21px}
+.setcard .sub{font-size:13px;color:var(--ink-2)}
+.bar{height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden;display:flex}
+.bar span{height:100%}
+.setcard .row{display:flex;gap:8px;margin-top:auto}
+
+/* ---------- Add view ---------- */
+.tabs{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:4px;gap:2px;margin:6px 0 22px}
+.tabs button{padding:8px 16px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--ink-2)}
+.tabs button.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.field{display:flex;gap:10px;align-items:center}
+.input{
+  width:100%;padding:13px 15px;border-radius:var(--r);border:1px solid var(--line);background:var(--surface);
+  font-size:15px;transition:border .15s,box-shadow .15s;outline:none
+}
+.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;display:block}
+.results{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.res{display:flex;gap:14px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.res .th{width:64px;height:64px;border-radius:10px;object-fit:cover;background:var(--surface-2);flex:0 0 auto}
+.res .info{flex:1;min-width:0}
+.res .info .t{font-family:var(--display);font-size:17px;font-weight:500}
+.res .info .x{font-size:12.5px;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
+
+/* ---------- Spectrogram / player ---------- */
+.spectro{display:flex;align-items:flex-end;gap:3px;height:46px}
+.spectro i{flex:1;background:linear-gradient(var(--primary),var(--b3));border-radius:3px;height:18%;transition:height .09s linear;opacity:.85}
+.spectro.idle i{background:var(--line)}
+.player{display:flex;align-items:center;gap:14px}
+.playbtn{width:54px;height:54px;border-radius:999px;background:var(--primary);color:#fff;display:grid;place-items:center;flex:0 0 auto;box-shadow:0 6px 18px -6px rgba(46,107,74,.6)}
+.playbtn.lg{width:66px;height:66px}
+.playbtn:active{transform:scale(.96)}
+.recmeta{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+
+/* ---------- Study ---------- */
+.study{max-width:560px;margin:24px auto 0}
+.study .progress{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.study .progress .track{flex:1;height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.study .progress .track i{display:block;height:100%;background:var(--primary);transition:width .3s}
+.study .progress .lab{font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.qcard{padding:22px;text-align:center}
+.qcard .qimg{width:100%;aspect-ratio:5/3;object-fit:cover;border-radius:var(--r);background:var(--surface-2);margin-bottom:18px}
+.qcard .qimg.hidden{display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-family:var(--mono);font-size:13px}
+.qname{font-family:var(--display);font-size:30px;font-weight:500;margin:6px 0}
+.qname.reveal{color:var(--primary)}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+.choice{padding:15px 14px;border:1.5px solid var(--line);border-radius:var(--r);background:var(--surface);font-size:16px;font-weight:500;
+  font-family:var(--display);transition:border .12s,background .12s;text-align:center}
+.choice:hover{border-color:var(--primary)}
+.choice.correct{border-color:var(--primary);background:var(--primary-soft);color:var(--primary-2)}
+.choice.wrong{border-color:var(--robin);background:#F6E4DF;color:var(--robin)}
+.choice .num{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-right:8px}
+.gradebtns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+.modeselect{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.mode{padding:18px;text-align:left;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);transition:transform .12s,box-shadow .15s,border .15s}
+.mode:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--primary)}
+.mode .mt{font-family:var(--display);font-size:19px;font-weight:500;margin-bottom:4px}
+.mode .md{font-size:13px;color:var(--ink-2)}
+.mode .mi{font-size:22px;margin-bottom:8px;display:block}
+.endcard{padding:30px 24px;text-align:center}
+.endcard .big{font-family:var(--display);font-size:46px;font-weight:500;color:var(--primary)}
+.fb{font-family:var(--display);font-size:18px;font-weight:500;margin-top:14px;min-height:24px}
+.fb.ok{color:var(--primary)} .fb.no{color:var(--robin)}
+
+/* ---------- Modal ---------- */
+.scrim{position:fixed;inset:0;z-index:60;background:rgba(22,36,28,.42);backdrop-filter:blur(3px);
+  display:grid;place-items:center;padding:18px;animation:fade .18s ease}
+.modal{background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-lg);max-width:560px;width:100%;
+  max-height:88dvh;overflow:auto;animation:pop .2s cubic-bezier(.2,.8,.3,1)}
+.modal .mhead{position:relative}
+.modal .mhead img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
+.modal .mbody{padding:22px}
+.modal .close{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:999px;background:rgba(251,252,250,.92);
+  display:grid;place-items:center;backdrop-filter:blur(4px);box-shadow:var(--shadow)}
+.reclist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.recrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
+.recrow .rp{width:40px;height:40px;border-radius:999px;background:var(--primary);color:#fff;display:grid;place-items:center;flex:0 0 auto}
+.boxctl{display:flex;gap:6px;align-items:center}
+.boxctl button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:600}
+.boxctl .cur{font-family:var(--mono);font-size:13px;min-width:60px;text-align:center}
+.chk{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;cursor:pointer}
+.chk:hover{background:var(--surface-2)}
+.chk input{width:17px;height:17px;accent-color:var(--primary)}
+
+/* ---------- empty / toast / misc ---------- */
+.empty{text-align:center;padding:54px 20px;border:1.5px dashed var(--line);border-radius:var(--r-lg);background:var(--surface-2)}
+.empty .ei{font-size:40px}
+.empty h3{font-size:24px;margin:14px 0 6px}
+.empty p{color:var(--ink-2);max-width:42ch;margin:0 auto 18px}
+#toasts{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center;width:max-content;max-width:90vw}
+@media(max-width:720px){ #toasts{bottom:84px} }
+.toast{background:var(--ink);color:#fff;padding:11px 18px;border-radius:999px;font-size:14px;font-weight:500;box-shadow:var(--shadow-lg);animation:pop .2s}
+.toast.gold{background:var(--gold);color:#3a2a08}
+.spin{width:18px;height:18px;border:2.5px solid var(--primary-soft);border-top-color:var(--primary);border-radius:99px;animation:rot .7s linear infinite;display:inline-block}
+.center{display:grid;place-items:center;padding:50px;color:var(--ink-3);gap:12px;font-size:14px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2)}
+.spread{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes rot{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+:focus-visible{outline:2.5px solid var(--primary);outline-offset:2px;border-radius:6px}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="2.5" y="11" width="27" height="17" rx="3.5" fill="#DBEADF" stroke="#2E6B4A" stroke-width="1.6"/>
+        <path d="M2.5 16.5h27" stroke="#2E6B4A" stroke-width="1.4" opacity=".5"/>
+        <path d="M21.5 6c-3.7 0-6.6 2.4-6.6 6 0 .9.2 1.6.5 2.3-2.6.3-4.4 1.6-4.4 1.6s2 .5 3.4.2c-.3.5-1 1.1-1 1.1s2.2-.2 3.6-1.2c1 .6 2.3 1 3.9 1 1.2 0 1.7-.5 1.7-1.1 0-.4-.3-.8-.8-.9 1.6-.6 2.7-2 2.7-3.9 0 0 .9-.4 1.3-1.3-.6.1-1 0-1.2-.1.4-.4.7-1 .8-1.6-.5.4-1.1.6-1.6.7C25.1 6.8 23.5 6 21.5 6Z" fill="#2E6B4A"/>
+        <circle cx="20.2" cy="9.7" r=".8" fill="#FBFCFA"/>
+      </svg>
+      Federbox
+    </div>
+    <nav class="nav" id="nav">
+      <button data-view="dashboard" class="active"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg>Übersicht</button>
+      <button data-view="collection"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Sammlung</button>
+      <button data-view="sets"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Sets</button>
+      <button data-view="add"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Hinzufügen</button>
+      <button data-view="settings"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>Mehr</button>
+    </nav>
+    <div class="spacer"></div>
+    <button class="btn topbar-cta" id="cta-study">Lernen starten</button>
+  </div>
+</header>
+
+<main class="shell" id="view"></main>
+
+<div id="modalRoot"></div>
+<div id="toasts"></div>
+<audio id="player" preload="none"></audio>
+
+<script>
+"use strict";
+/* ============================================================
+   1. KLEINE HELFER
+   ============================================================ */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = ()=> Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
+const DAY = 86400000;
+const BOX_COLORS = ['','--b1','--b2','--b3','--b4','--b5'];
+const BOX_NAMES = ['','Neu','Im Blick','Fast da','Sitzt','Gemeistert'];
+function bc(box){ return getComputedStyle(document.documentElement).getPropertyValue(BOX_COLORS[box]).trim(); }
+
+function toast(msg, gold=false){
+  const t=document.createElement('div'); t.className='toast'+(gold?' gold':''); t.textContent=msg;
+  $('#toasts').appendChild(t); setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300)}, 2400);
+}
+
+/* ============================================================
+   2. INDEXEDDB — alle Daten lokal im Browser
+   ============================================================ */
+const DB = (()=>{
+  let db=null;
+  function open(){
+    return new Promise((res,rej)=>{
+      const r=indexedDB.open('federbox',1);
+      r.onupgradeneeded=e=>{
+        const d=e.target.result;
+        if(!d.objectStoreNames.contains('birds')) d.createObjectStore('birds',{keyPath:'id'});
+        if(!d.objectStoreNames.contains('sets'))  d.createObjectStore('sets', {keyPath:'id'});
+      };
+      r.onsuccess=e=>{db=e.target.result;res()};
+      r.onerror=e=>rej(e.target.error);
+    });
+  }
+  function tx(store,mode='readonly'){ return db.transaction(store,mode).objectStore(store); }
+  const all = store => new Promise((res,rej)=>{const o=tx(store).getAll();o.onsuccess=()=>res(o.result||[]);o.onerror=()=>rej(o.error)});
+  const put = (store,v) => new Promise((res,rej)=>{const o=tx(store,'readwrite').put(v);o.onsuccess=()=>res(v);o.onerror=()=>rej(o.error)});
+  const del = (store,k) => new Promise((res,rej)=>{const o=tx(store,'readwrite').delete(k);o.onsuccess=()=>res();o.onerror=()=>rej(o.error)});
+  const clear = store => new Promise((res,rej)=>{const o=tx(store,'readwrite').clear();o.onsuccess=()=>res();o.onerror=()=>rej(o.error)});
+  return {open,all,put,del,clear};
+})();
+
+/* ============================================================
+   3. API-SCHICHT — über den eigenen Proxy (/api/proxy)
+   Bilder & Audio laden direkt (kein CORS nötig).
+   ============================================================ */
+const PROXY = '/api/proxy';
+let backendOk = null; // null=unbekannt
+
+async function px(service, params){
+  const u = new URL(PROXY, location.origin);
+  u.searchParams.set('service', service);
+  for(const [k,v] of Object.entries(params)) u.searchParams.set(k, v);
+  const r = await fetch(u);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+
+// Kandidaten über die deutsche Wikipedia suchen
+async function searchBirds(term){
+  const data = await px('wiki', {
+    action:'query', generator:'search', gsrsearch:term, gsrlimit:8, gsrnamespace:0,
+    prop:'pageimages|pageprops|extracts', piprop:'thumbnail', pithumbsize:480,
+    exintro:1, explaintext:1, exsentences:2, exlimit:'max'
+  });
+  const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
+  pages.sort((a,b)=>(a.index??99)-(b.index??99));
+  return pages.map(p=>({
+    title:p.title, qid:p.pageprops?.wikibase_item||null,
+    image:p.thumbnail?.source||null, extract:p.extract||''
+  }));
+}
+
+// Einen Kandidaten anreichern: wiss. Name (Wikidata) + Laute (Xeno-canto)
+async function enrichBird(cand){
+  let la=null, en=null, de=cand.title, image=cand.image;
+  if(cand.qid){
+    try{
+      const wd = await px('wikidata',{action:'wbgetentities',ids:cand.qid,props:'labels|claims',languages:'de|en'});
+      const ent = wd?.entities?.[cand.qid];
+      if(ent){
+        de = ent.labels?.de?.value || de;
+        en = ent.labels?.en?.value || null;
+        const p225 = ent.claims?.P225?.[0]?.mainsnak?.datavalue?.value;
+        if(p225) la = p225;
+        if(!image){
+          const p18 = ent.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+          if(p18) image = 'https://commons.wikimedia.org/wiki/Special:FilePath/'+encodeURIComponent(p18)+'?width=520';
+        }
+      }
+    }catch(e){/* weiter ohne Wikidata */}
+  }
+  const sounds = await fetchSounds({la,en});
+  return {
+    id:uid(), de, la, en, image, sounds,
+    wiki:'https://de.wikipedia.org/wiki/'+encodeURIComponent(cand.title.replace(/ /g,'_')),
+    box:1, due:0, correct:0, wrong:0, lastReviewed:0, created:Date.now()
+  };
+}
+
+function qScore(r){const o={A:0,B:1,C:2,D:3,E:4};const q=o[r.q]??5;const song=/song|gesang/i.test(r.type||'')?0:1;return q*2+song;}
+async function fetchSounds({la,en}){
+  let query=null;
+  if(la){ const parts=la.trim().split(/\s+/); if(parts.length>=2) query=`gen:"${parts[0]}" sp:"${parts[1]}"`; }
+  if(!query && en) query=`en:"${en}"`;
+  if(!query) return [];
+  try{
+    const data = await px('xc',{query, per_page:14});
+    const recs = (data?.recordings)||[];
+    return recs.sort((a,b)=>qScore(a)-qScore(b)).slice(0,6).map(r=>({
+      id:r.id,
+      url:(r.file&&String(r.file).startsWith('http'))?r.file:`https://xeno-canto.org/${r.id}/download`,
+      type:r.type||'', q:r.q||'', loc:r.loc||'', rec:r.rec||'', length:r.length||r.lengthMin||''
+    }));
+  }catch(e){ return []; }
+}
+
+async function pingBackend(){
+  try{ await px('wiki',{action:'query',meta:'siteinfo',siprop:'general'}); backendOk=true; }
+  catch(e){ backendOk=false; }
+  return backendOk;
+}
+
+/* ============================================================
+   4. LEITNER-LOGIK (5 Boxen)
+   ============================================================ */
+const INTERVAL = {1:1,2:2,3:4,4:8,5:16}; // Tage bis wieder fällig (nach richtiger Antwort)
+function isDue(b){ return (b.due||0) <= Date.now(); }
+function grade(b, correct){
+  const before=b.box||1;
+  if(correct){ b.box=Math.min(5,(b.box||1)+1); b.correct=(b.correct||0)+1; b.due=Date.now()+INTERVAL[b.box]*DAY; }
+  else { b.box=1; b.wrong=(b.wrong||0)+1; b.due=Date.now()+6*3600*1000; }
+  b.lastReviewed=Date.now();
+  return {before, after:b.box, mastered:(correct && b.box===5 && before<5)};
+}
+
+/* ============================================================
+   5. STATE
+   ============================================================ */
+const state = { view:'dashboard', birds:[], sets:[] };
+async function loadAll(){
+  state.birds = await DB.all('birds');
+  state.sets  = await DB.all('sets');
+}
+const birdById = id => state.birds.find(b=>b.id===id);
+function setProgress(s){ // Boxverteilung eines Sets/aller
+  const ids = s? s.birdIds : state.birds.map(b=>b.id);
+  const counts=[0,0,0,0,0,0];
+  ids.forEach(id=>{const b=birdById(id); if(b) counts[b.box||1]++;});
+  return {counts, total:ids.length};
+}
+
+/* ============================================================
+   6. AUDIO + SPECTROGRAM
+   ============================================================ */
+const player = $('#player');
+let spectroTimer=null, spectroEls=[];
+function registerSpectro(container){ spectroEls = $$('i',container); }
+function animateSpectro(on){
+  cancelAnimationFrame(spectroTimer);
+  const cont = spectroEls[0]?.parentElement;
+  if(cont) cont.classList.toggle('idle', !on);
+  if(!on){ spectroEls.forEach(b=>b.style.height='16%'); return; }
+  let t=0;
+  const tick=()=>{
+    t+=0.18;
+    spectroEls.forEach((b,i)=>{
+      const v = 0.28 + 0.36*Math.abs(Math.sin(t+i*0.55)) + 0.32*Math.random();
+      b.style.height = Math.min(100, v*100)+'%';
+    });
+    spectroTimer=requestAnimationFrame(tick);
+  };
+  tick();
+}
+function playUrl(url){
+  if(!url){ toast('Für diesen Vogel ist noch kein Laut gespeichert.'); return; }
+  if(!player.paused && player.dataset.src===url){ player.pause(); return; }
+  player.src=url; player.dataset.src=url;
+  player.play().catch(()=>toast('Laut konnte nicht abgespielt werden.'));
+}
+function autoplay(url){
+  if(!url) return;
+  player.src=url; player.dataset.src=url;
+  player.play().catch(()=>{}); // stiller Autostart, Browser-Policy schluckt evtl.
+}
+player.addEventListener('play', ()=>animateSpectro(true));
+player.addEventListener('pause',()=>animateSpectro(false));
+player.addEventListener('ended',()=>animateSpectro(false));
+function stopAudio(){ try{player.pause(); player.currentTime=0;}catch(e){} }
+
+/* ============================================================
+   7. VIEWS / RENDER
+   ============================================================ */
+const view = $('#view');
+function setView(v){
+  if(v!=='study') stopAudio();
+  state.view=v;
+  $$('#nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  render();
+}
+function render(){
+  switch(state.view){
+    case 'dashboard': return renderDashboard();
+    case 'collection': return renderCollection();
+    case 'sets': return renderSets();
+    case 'add': return renderAdd();
+    case 'settings': return renderSettings();
+    case 'study': return; // vom Study-Engine verwaltet
+  }
+}
+
+/* ---- Dashboard ---- */
+function renderDashboard(){
+  const total=state.birds.length;
+  const due=state.birds.filter(isDue).length;
+  const mastered=state.birds.filter(b=>b.box===5).length;
+  const answered=state.birds.reduce((a,b)=>a+(b.correct||0)+(b.wrong||0),0);
+  const right=state.birds.reduce((a,b)=>a+(b.correct||0),0);
+  const acc = answered? Math.round(right/answered*100):0;
+  const {counts}=setProgress(null);
+  const hour=new Date().getHours();
+  const greet = hour<11?'Guten Morgen':hour<18?'Hallo':'Guten Abend';
+
+  if(total===0){
+    view.innerHTML = `
+      <div class="hero"><h1>${greet}, <b>Schnucki</b></h1>
+      <p class="lead">Noch keine Vögel im Kasten. Leg los, indem du welche hinzufügst – per Suche, als fertiges Beispiel-Set oder von Hand.</p></div>
+      <div class="empty" style="margin-top:24px">
+        <div class="ei">🪺</div><h3>Dein Kasten ist leer</h3>
+        <p>Such einen Vogel, und Federbox holt automatisch Bild, deutschen + wissenschaftlichen Namen und Stimmen dazu.</p>
+        <div class="row" style="justify-content:center">
+          <button class="btn" onclick="setView('add')">Vögel hinzufügen</button>
+          <button class="btn ghost" onclick="loadExamples()">Beispiel-Set laden</button>
+        </div>
+      </div>`;
+    return;
+  }
+  view.innerHTML = `
+    <div class="hero">
+      <h1>${greet}, <b>Schnucki</b></h1>
+      <p class="lead">${ due? `<span class="num">${due}</span> ${due===1?'Vogel wartet':'Vögel warten'} heute auf dich.` : 'Alles gelernt für heute – schön! Du kannst trotzdem frei üben.' }</p>
+      <div class="hero-actions">
+        <button class="btn" onclick="startStudyPick(null)">${due?'Lernen starten':'Frei üben'}</button>
+        <button class="btn ghost" onclick="setView('add')">Vögel hinzufügen</button>
+      </div>
+    </div>
+
+    <div class="kasten">
+      ${[1,2,3,4,5].map(i=>`
+        <button class="box" onclick="setView('collection')" title="${BOX_NAMES[i]}">
+          <span class="lid" style="background:${bc(i)}"></span>
+          <div class="bn">Box ${i}</div>
+          <div class="cnt">${counts[i]}</div>
+          <div class="bl">${BOX_NAMES[i]}</div>
+        </button>`).join('')}
+    </div>
+
+    <div class="stats">
+      <div class="stat card"><div class="v">${total}</div><div class="k">Vögel gesamt</div></div>
+      <div class="stat card"><div class="v" style="color:var(--primary)">${due}</div><div class="k">Heute fällig</div></div>
+      <div class="stat card"><div class="v" style="color:var(--gold)">${mastered}</div><div class="k">Gemeistert</div></div>
+      <div class="stat card"><div class="v">${acc}%</div><div class="k">Trefferquote</div></div>
+    </div>
+
+    ${ state.sets.length? `<div class="section-title">Deine Sets</div>
+      <div class="setlist">${state.sets.slice(0,3).map(setCardHTML).join('')}</div>`:''}
+  `;
+}
+
+/* ---- Collection ---- */
+let collFilter='all';
+function renderCollection(){
+  if(state.birds.length===0){ return emptyView('Sammlung leer','Füge Vögel hinzu, dann erscheinen sie hier.','add','Vögel hinzufügen'); }
+  const filtered = collFilter==='all'? state.birds
+    : collFilter==='due'? state.birds.filter(isDue)
+    : state.birds.filter(b=>b.box===+collFilter);
+  view.innerHTML = `
+    <div class="hero" style="margin-bottom:18px"><h1>Sammlung</h1>
+      <p class="lead" style="font-size:17px">${state.birds.length} Vögel. Tippe einen an für Stimmen, Box und Details.</p></div>
+    <div class="row" style="margin-bottom:18px">
+      ${filterPill('all','Alle')}
+      ${filterPill('due','Fällig')}
+      ${[1,2,3,4,5].map(i=>filterPill(String(i),'Box '+i, bc(i))).join('')}
+    </div>
+    <div class="grid">${filtered.map(birdCardHTML).join('') || '<p class="faint">Keine Vögel in dieser Auswahl.</p>'}</div>`;
+}
+function filterPill(val,label,color){
+  const active=collFilter===val;
+  return `<button class="pill" style="${active?'background:var(--ink);color:#fff;border-color:var(--ink)':''}" onclick="collFilter='${val}';renderCollection()">
+    ${color?`<span class="dot" style="background:${color}"></span>`:''}${label}</button>`;
+}
+function birdCardHTML(b){
+  return `<button class="bird" onclick="openBird('${b.id}')">
+    <div class="ph">
+      ${b.image?`<img loading="lazy" src="${esc(b.image)}" alt="${esc(b.de)}">`:`<div class="noimg">🪶</div>`}
+      <span class="badge"><span class="dot" style="background:${bc(b.box||1)}"></span>${b.box||1}</span>
+      ${b.sounds&&b.sounds.length?`<span class="snd" onclick="event.stopPropagation();playUrl('${esc(b.sounds[0].url)}')" title="Stimme abspielen">▶</span>`:''}
+    </div>
+    <div class="meta"><div class="dn">${esc(b.de)}</div>${b.la?`<div class="la">${esc(b.la)}</div>`:''}</div>
+  </button>`;
+}
+
+/* ---- Sets ---- */
+function setCardHTML(s){
+  const {counts,total}=setProgress(s);
+  const segs=[1,2,3,4,5].map(i=>total?`<span style="width:${counts[i]/total*100}%;background:${bc(i)}"></span>`:'').join('');
+  return `<div class="setcard card">
+    <div><h3>${esc(s.name)}</h3><div class="sub">${total} ${total===1?'Vogel':'Vögel'}${s.description?' · '+esc(s.description):''}</div></div>
+    <div class="bar">${segs||'<span style="width:100%;background:var(--surface-2)"></span>'}</div>
+    <div class="row"><button class="btn sm" onclick="startStudyPick('${s.id}')">Lernen</button>
+      <button class="btn ghost sm" onclick="editSet('${s.id}')">Bearbeiten</button></div>
+  </div>`;
+}
+function renderSets(){
+  view.innerHTML = `
+    <div class="spread" style="margin:30px 0 18px">
+      <div class="hero" style="margin:0"><h1>Sets</h1></div>
+      <button class="btn" onclick="editSet(null)">+ Neues Set</button>
+    </div>
+    ${ state.sets.length? `<div class="setlist">${state.sets.map(setCardHTML).join('')}</div>`
+      : `<div class="empty"><div class="ei">🗂️</div><h3>Noch keine Sets</h3>
+         <p>Sets bündeln Vögel zu Lerngruppen – z.&nbsp;B. „Gartenvögel“ oder „Greifvögel“. Lernen kannst du dann gezielt ein Set.</p>
+         <button class="btn" onclick="editSet(null)">Erstes Set anlegen</button></div>` }`;
+}
+
+/* ---- Add ---- */
+let addTab='search';
+function renderAdd(){
+  view.innerHTML = `
+    <div class="hero" style="margin-bottom:8px"><h1>Vögel hinzufügen</h1></div>
+    <div class="tabs">
+      <button class="${addTab==='search'?'active':''}" onclick="addTab='search';renderAdd()">Suchen</button>
+      <button class="${addTab==='manual'?'active':''}" onclick="addTab='manual';renderAdd()">Von Hand</button>
+      <button class="${addTab==='examples'?'active':''}" onclick="addTab='examples';renderAdd()">Beispiele</button>
+    </div>
+    <div id="addBody"></div>`;
+  const body=$('#addBody');
+  if(addTab==='search'){
+    body.innerHTML=`
+      <div class="field">
+        <input class="input" id="q" placeholder="Vogelname, z.B. Kohlmeise, Rotkehlchen, Buchfink …" autocomplete="off">
+        <button class="btn" id="goSearch">Suchen</button>
+      </div>
+      <p class="faint" style="font-size:13px;margin-top:10px">Bild, deutscher + wissenschaftlicher Name und Stimmen werden automatisch geholt.</p>
+      <div class="results" id="results"></div>`;
+    const run=()=>doSearch($('#q').value.trim());
+    $('#goSearch').onclick=run;
+    $('#q').onkeydown=e=>{if(e.key==='Enter')run()};
+    $('#q').focus();
+  } else if(addTab==='manual'){
+    body.innerHTML=`
+      <div class="card" style="padding:20px;max-width:520px">
+        <label class="lbl">Deutscher Name *</label><input class="input" id="m_de" placeholder="z.B. Kohlmeise">
+        <label class="lbl">Wissenschaftlicher Name</label><input class="input" id="m_la" placeholder="z.B. Parus major">
+        <label class="lbl">Bild-URL</label><input class="input" id="m_img" placeholder="https://…">
+        <label class="lbl">Laut-URL (mp3)</label><input class="input" id="m_snd" placeholder="https://…">
+        <p class="faint" style="font-size:12.5px;margin:12px 0 0">Funktioniert komplett offline – ideal für eigene Aufnahmen oder wenn das Backend mal nicht erreichbar ist.</p>
+        <div class="row" style="margin-top:16px"><button class="btn" id="m_add">Hinzufügen</button></div>
+      </div>`;
+    $('#m_add').onclick=async()=>{
+      const de=$('#m_de').value.trim(); if(!de){toast('Bitte einen Namen eingeben.');return;}
+      const snd=$('#m_snd').value.trim();
+      const b={id:uid(),de,la:$('#m_la').value.trim()||null,en:null,image:$('#m_img').value.trim()||null,
+        sounds:snd?[{id:'manual',url:snd,type:'',q:'',loc:'',rec:'',length:''}]:[],
+        wiki:null,box:1,due:0,correct:0,wrong:0,lastReviewed:0,created:Date.now()};
+      await DB.put('birds',b); state.birds.push(b); toast(`„${de}“ hinzugefügt.`); renderAdd();
+    };
+  } else {
+    body.innerHTML=`
+      <div class="card" style="padding:22px;max-width:560px">
+        <h3 style="font-size:21px">Häufige Gartenvögel</h3>
+        <p class="muted" style="font-size:14px;margin:8px 0 2px">Lädt ein fertiges Set mit zehn vertrauten Arten – Bild, Namen und Stimmen inklusive. Braucht das Backend (Suche).</p>
+        <ul class="muted" style="font-size:13px;columns:2;margin:14px 0">
+          ${EXAMPLES.map(e=>`<li>${esc(e)}</li>`).join('')}
+        </ul>
+        <button class="btn" onclick="loadExamples()">Beispiel-Set laden</button>
+      </div>`;
+  }
+}
+async function doSearch(term){
+  if(!term){toast('Bitte einen Suchbegriff eingeben.');return;}
+  const box=$('#results'); box.innerHTML=`<div class="center"><span class="spin"></span> Suche „${esc(term)}“…</div>`;
+  try{
+    const cands = await searchBirds(term);
+    state._lastResults = cands;
+    if(!cands.length){ box.innerHTML=`<div class="empty"><div class="ei">🔍</div><h3>Nichts gefunden</h3><p>Versuch einen anderen Namen – deutsch oder wissenschaftlich.</p></div>`; return; }
+    box.innerHTML = cands.map((c,i)=>`
+      <div class="res" id="res${i}">
+        ${c.image?`<img class="th" src="${esc(c.image)}" alt="">`:`<div class="th" style="display:grid;place-items:center">🪶</div>`}
+        <div class="info"><div class="t">${esc(c.title)}</div><div class="x">${esc(c.extract||'')}</div></div>
+        <button class="btn sm" onclick="addCandidate(${i})">+ Hinzufügen</button>
+      </div>`).join('');
+  }catch(e){
+    box.innerHTML=`<div class="empty"><div class="ei">📡</div><h3>Backend nicht erreichbar</h3>
+      <p>Die Suche braucht die Serverless-Funktion. Nutze „Von Hand“, oder deploye/starte das Backend (siehe README).</p></div>`;
+  }
+}
+async function addCandidate(i){
+  const c = (state._lastResults||[])[i]; if(!c){ toast('Treffer nicht mehr verfügbar.'); return; }
+  const btn=$(`#res${i} .btn`); if(btn){btn.disabled=true; btn.innerHTML='<span class="spin"></span>';}
+  try{
+    const b = await enrichBird(c);
+    await DB.put('birds',b); state.birds.push(b);
+    toast(`„${b.de}“ hinzugefügt${b.sounds.length?` · ${b.sounds.length} Stimmen`:''}.`);
+    if(btn){btn.outerHTML='<span class="pill" style="background:var(--primary-soft);color:var(--primary-2);border-color:var(--primary)">✓ Im Kasten</span>';}
+  }catch(e){ toast('Konnte nicht hinzugefügt werden.'); if(btn){btn.disabled=false;btn.textContent='+ Hinzufügen';} }
+}
+
+const EXAMPLES=['Kohlmeise','Amsel','Rotkehlchen','Buchfink','Blaumeise','Kleiber','Zaunkönig','Star','Singdrossel','Stieglitz'];
+async function loadExamples(){
+  toast('Lade Beispielvögel…');
+  let added=0; const addedIds=[];
+  for(const name of EXAMPLES){
+    const exist=state.birds.find(b=>b.de.toLowerCase()===name.toLowerCase());
+    if(exist){ addedIds.push(exist.id); continue; }
+    try{
+      const cands=await searchBirds(name);
+      if(cands[0]){ const b=await enrichBird(cands[0]); await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; }
+    }catch(e){ toast('Backend nicht erreichbar – Beispiele brauchen die Suche.'); break; }
+  }
+  if(added){
+    // optional als Set bündeln
+    const s={id:uid(),name:'Gartenvögel',description:'Beispiel-Set',birdIds:addedIds,created:Date.now()};
+    await DB.put('sets',s); state.sets.push(s);
+    toast(`${added} Vögel + Set „Gartenvögel“ geladen.`, true);
+  }
+  setView('dashboard');
+}
+
+/* ---- Settings ---- */
+async function renderSettings(){
+  view.innerHTML=`
+    <div class="hero" style="margin-bottom:14px"><h1>Mehr</h1></div>
+    <div class="card" style="padding:20px;margin-bottom:14px">
+      <div class="spread"><strong>Backend-Status</strong><span id="bstatus" class="pill"><span class="spin"></span> prüfe…</span></div>
+      <p class="muted" style="font-size:13.5px;margin:10px 0 0">Suche & Stimmen laufen über die Vercel-Funktion <code>/api/proxy</code>. Der Xeno-canto-Key liegt sicher serverseitig (Umgebungsvariable <code>XC_API_KEY</code>) – siehe README.</p>
+    </div>
+    <div class="card" style="padding:20px;margin-bottom:14px">
+      <strong>Daten sichern</strong>
+      <p class="muted" style="font-size:13.5px;margin:8px 0 14px">Alles liegt nur in deinem Browser (IndexedDB). Exportiere ab und zu eine Sicherung.</p>
+      <div class="row">
+        <button class="btn ghost sm" onclick="exportData()">Export (JSON)</button>
+        <label class="btn ghost sm" style="position:relative;overflow:hidden">Import<input type="file" accept="application/json" onchange="importData(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>
+      </div>
+    </div>
+    <div class="card" style="padding:20px">
+      <strong style="color:var(--robin)">Zurücksetzen</strong>
+      <p class="muted" style="font-size:13.5px;margin:8px 0 14px">Löscht alle Vögel und Sets unwiderruflich.</p>
+      <button class="btn danger sm" onclick="resetAll()">Alles löschen</button>
+    </div>`;
+  const ok = backendOk!==null? backendOk : await pingBackend();
+  const el=$('#bstatus');
+  if(el) el.outerHTML = ok
+    ? `<span class="pill" style="background:var(--primary-soft);color:var(--primary-2);border-color:var(--primary)"><span class="dot" style="background:var(--primary)"></span>verbunden</span>`
+    : `<span class="pill" style="background:#F6E4DF;color:var(--robin);border-color:#E6CcC4"><span class="dot" style="background:var(--robin)"></span>nicht erreichbar</span>`;
+}
+async function exportData(){
+  const data={version:1,exported:Date.now(),birds:state.birds,sets:state.sets};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='federbox-backup.json'; a.click(); toast('Sicherung exportiert.');
+}
+async function importData(ev){
+  const f=ev.target.files[0]; if(!f)return;
+  try{
+    const d=JSON.parse(await f.text());
+    for(const b of (d.birds||[])){ if(!birdById(b.id)){ await DB.put('birds',b); state.birds.push(b);} }
+    for(const s of (d.sets||[])){ if(!state.sets.find(x=>x.id===s.id)){ await DB.put('sets',s); state.sets.push(s);} }
+    toast('Import abgeschlossen.', true); setView('dashboard');
+  }catch(e){ toast('Datei konnte nicht gelesen werden.'); }
+}
+async function resetAll(){
+  if(!confirm('Wirklich alle Vögel und Sets löschen?')) return;
+  await DB.clear('birds'); await DB.clear('sets'); state.birds=[]; state.sets=[]; toast('Alles gelöscht.'); setView('dashboard');
+}
+
+/* ============================================================
+   8. MODALS — Bird-Detail & Set-Editor
+   ============================================================ */
+const modalRoot=$('#modalRoot');
+function closeModal(){ stopAudio(); modalRoot.innerHTML=''; }
+modalRoot.addEventListener('click',e=>{ if(e.target.classList.contains('scrim')) closeModal(); });
+
+function openBird(id){
+  const b=birdById(id); if(!b)return;
+  const inSets=state.sets.filter(s=>s.birdIds.includes(id)).map(s=>s.name);
+  modalRoot.innerHTML=`
+    <div class="scrim"><div class="modal">
+      <div class="mhead">
+        ${b.image?`<img src="${esc(b.image)}" alt="${esc(b.de)}">`:`<div style="aspect-ratio:16/9;background:var(--surface-2);display:grid;place-items:center;font-size:42px">🪶</div>`}
+        <button class="close" onclick="closeModal()" aria-label="Schließen">✕</button>
+      </div>
+      <div class="mbody">
+        <div class="spread">
+          <div><h2 style="font-size:27px">${esc(b.de)}</h2>${b.la?`<div class="la" style="font-size:13px;margin-top:3px">${esc(b.la)}</div>`:''}</div>
+          <span class="pill" style="background:${bc(b.box||1)};color:#11231a;border:none"><span class="dot" style="background:#11231a;opacity:.5"></span>Box ${b.box||1} · ${BOX_NAMES[b.box||1]}</span>
+        </div>
+
+        <div class="player" style="margin:18px 0 6px">
+          <button class="playbtn lg" id="bigplay">▶</button>
+          <div class="spectro" id="spectro">${'<i></i>'.repeat(24)}</div>
+        </div>
+        ${b.sounds&&b.sounds.length?`<div class="reclist">${b.sounds.map((r,i)=>`
+          <div class="recrow">
+            <button class="rp" onclick="playUrl('${esc(r.url)}')">▶</button>
+            <div style="flex:1"><div style="font-size:13.5px;font-weight:500">${esc(r.type||'Aufnahme')} ${r.q?`· Qualität ${esc(r.q)}`:''}</div>
+              <div class="recmeta">${esc(r.loc||'')}${r.rec?' · '+esc(r.rec):''}${r.length?' · '+esc(r.length):''}</div></div>
+          </div>`).join('')}</div>`
+          :`<p class="faint" style="font-size:13px">Keine Stimme gespeichert. ${b.la||b.en?'<a href="#" onclick="reloadSounds(\''+b.id+'\');return false">Stimmen laden</a>':''}</p>`}
+
+        <div class="spread" style="margin-top:20px">
+          <div class="boxctl">
+            <span class="muted" style="font-size:13px;margin-right:4px">Box</span>
+            <button onclick="nudgeBox('${b.id}',-1)">–</button>
+            <span class="cur" id="boxcur">${b.box||1} · ${BOX_NAMES[b.box||1]}</span>
+            <button onclick="nudgeBox('${b.id}',1)">+</button>
+          </div>
+          <div class="row">
+            ${b.wiki?`<a class="btn ghost sm" href="${esc(b.wiki)}" target="_blank" rel="noopener">Wikipedia</a>`:''}
+            <button class="btn danger sm" onclick="deleteBird('${b.id}')">Löschen</button>
+          </div>
+        </div>
+        ${inSets.length?`<p class="faint" style="font-size:12.5px;margin-top:12px">In Sets: ${inSets.map(esc).join(', ')}</p>`:''}
+        <p class="faint" style="font-size:12px;margin-top:10px">✓ ${b.correct||0} richtig · ✗ ${b.wrong||0} falsch</p>
+      </div>
+    </div></div>`;
+  registerSpectro($('#spectro'));
+  const url=b.sounds&&b.sounds[0]?b.sounds[0].url:null;
+  $('#bigplay').onclick=()=>{ playUrl(url); };
+}
+async function nudgeBox(id,d){
+  const b=birdById(id); if(!b)return;
+  b.box=Math.max(1,Math.min(5,(b.box||1)+d)); await DB.put('birds',b);
+  const cur=$('#boxcur'); if(cur)cur.textContent=`${b.box} · ${BOX_NAMES[b.box]}`;
+}
+async function deleteBird(id){
+  const b=birdById(id);
+  if(!confirm(`„${b.de}“ löschen?`))return;
+  await DB.del('birds',id); state.birds=state.birds.filter(x=>x.id!==id);
+  for(const s of state.sets){ if(s.birdIds.includes(id)){ s.birdIds=s.birdIds.filter(x=>x!==id); await DB.put('sets',s);} }
+  closeModal(); toast('Gelöscht.'); render();
+}
+async function reloadSounds(id){
+  const b=birdById(id); if(!b)return; toast('Lade Stimmen…');
+  const sounds=await fetchSounds({la:b.la,en:b.en});
+  if(sounds.length){ b.sounds=sounds; await DB.put('birds',b); toast(`${sounds.length} Stimmen geladen.`); openBird(id); }
+  else toast('Keine Stimmen gefunden.');
+}
+
+function editSet(id){
+  const s = id? state.sets.find(x=>x.id===id) : {id:null,name:'',description:'',birdIds:[]};
+  const selected=new Set(s.birdIds);
+  modalRoot.innerHTML=`
+    <div class="scrim"><div class="modal"><div class="mbody">
+      <h2 style="font-size:24px;margin-bottom:14px">${id?'Set bearbeiten':'Neues Set'}</h2>
+      <label class="lbl">Name *</label><input class="input" id="s_name" value="${esc(s.name)}" placeholder="z.B. Gartenvögel">
+      <label class="lbl">Beschreibung</label><input class="input" id="s_desc" value="${esc(s.description||'')}" placeholder="optional">
+      <label class="lbl">Vögel im Set (${state.birds.length} verfügbar)</label>
+      <div style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);padding:6px;margin-top:4px">
+        ${state.birds.length? state.birds.map(b=>`
+          <label class="chk"><input type="checkbox" value="${b.id}" ${selected.has(b.id)?'checked':''}>
+            <span class="dot" style="background:${bc(b.box||1)}"></span>
+            <span style="flex:1"><span style="font-family:var(--display);font-size:15px">${esc(b.de)}</span> ${b.la?`<span class="la"> ${esc(b.la)}</span>`:''}</span></label>`).join('')
+          : '<p class="faint" style="padding:10px">Noch keine Vögel. Füge erst welche hinzu.</p>'}
+      </div>
+      <div class="spread" style="margin-top:18px">
+        ${id?`<button class="btn danger sm" onclick="deleteSet('${id}')">Set löschen</button>`:'<span></span>'}
+        <div class="row"><button class="btn ghost" onclick="closeModal()">Abbrechen</button>
+          <button class="btn" onclick="saveSet('${id||''}')">Speichern</button></div>
+      </div>
+    </div></div></div>`;
+}
+async function saveSet(id){
+  const name=$('#s_name').value.trim(); if(!name){toast('Bitte einen Namen eingeben.');return;}
+  const ids=$$('.chk input:checked').map(i=>i.value);
+  if(id){ const s=state.sets.find(x=>x.id===id); s.name=name; s.description=$('#s_desc').value.trim(); s.birdIds=ids; await DB.put('sets',s); }
+  else { const s={id:uid(),name,description:$('#s_desc').value.trim(),birdIds:ids,created:Date.now()}; await DB.put('sets',s); state.sets.push(s); }
+  closeModal(); toast('Set gespeichert.'); setView('sets');
+}
+async function deleteSet(id){
+  if(!confirm('Set löschen? Die Vögel bleiben erhalten.'))return;
+  await DB.del('sets',id); state.sets=state.sets.filter(x=>x.id!==id); closeModal(); toast('Set gelöscht.'); setView('sets');
+}
+
+/* ============================================================
+   9. STUDY ENGINE — 4 Lernspiele + Leitner
+   ============================================================ */
+let study=null;
+
+function startStudyPick(setId){
+  const set = setId? state.sets.find(s=>s.id===setId) : null;
+  const scopeBirds = (set? set.birdIds.map(birdById).filter(Boolean) : state.birds);
+  if(scopeBirds.length===0){ toast('Keine Vögel zum Lernen. Füge erst welche hinzu.'); setView('add'); return; }
+  state.view='study';
+  $$('#nav button').forEach(b=>b.classList.remove('active'));
+  // Modus wählen
+  const enoughForMC = scopeBirds.length>=4;
+  const haveSounds = scopeBirds.some(b=>b.sounds&&b.sounds.length);
+  view.innerHTML=`
+    <div class="study">
+      <div class="spread" style="margin:10px 0 18px">
+        <div><div class="eyebrow">Lernen${set?' · '+esc(set.name):''}</div>
+          <h1 style="font-size:30px;margin-top:6px">Wähl ein Spiel</h1></div>
+        <button class="btn ghost sm" onclick="setView('dashboard')">Zurück</button>
+      </div>
+      <div class="modeselect">
+        <button class="mode" onclick="beginStudy('${setId||''}','flip')">
+          <span class="mi">🃏</span><div class="mt">Karteikarte</div>
+          <div class="md">Bild & Stimme, Namen selbst raten, dann umdrehen und bewerten.</div></button>
+        <button class="mode" onclick="beginStudy('${setId||''}','mc')" ${enoughForMC?'':'style="opacity:.5;pointer-events:none"'}>
+          <span class="mi">🔤</span><div class="mt">Multiple Choice</div>
+          <div class="md">Bild & Stimme sehen, aus vier Namen den richtigen wählen.${enoughForMC?'':' (ab 4 Vögeln)'}</div></button>
+        <button class="mode" onclick="beginStudy('${setId||''}','listen')" ${(enoughForMC&&haveSounds)?'':'style="opacity:.5;pointer-events:none"'}>
+          <span class="mi">🎧</span><div class="mt">Hörquiz</div>
+          <div class="md">Nur die Stimme – ohne Bild – dem richtigen Namen zuordnen.${(enoughForMC&&haveSounds)?'':' (braucht Stimmen)'}</div></button>
+        <button class="mode" onclick="beginStudy('${setId||''}','type')">
+          <span class="mi">⌨️</span><div class="mt">Tippen</div>
+          <div class="md">Bild & Stimme, den deutschen Namen eintippen.</div></button>
+      </div>
+      <p class="faint" style="font-size:13px;margin-top:18px">Richtig → der Vogel wandert eine Box weiter. Falsch → zurück in Box&nbsp;1.</p>
+    </div>`;
+}
+
+function beginStudy(setId, mode){
+  const set = setId? state.sets.find(s=>s.id===setId) : null;
+  const scope = (set? set.birdIds.map(birdById).filter(Boolean) : state.birds);
+  let queue = scope.filter(isDue);
+  let freeMode=false;
+  if(queue.length===0){ queue=[...scope]; freeMode=true; } // nichts fällig → freies Üben
+  // mischen
+  for(let i=queue.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[queue[i],queue[j]]=[queue[j],queue[i]];}
+  study={set,scope,mode,queue,freeMode,total:queue.length,done:0,right:0,results:[]};
+  nextQuestion();
+}
+
+function nextQuestion(){
+  stopAudio();
+  if(study.queue.length===0) return endStudy();
+  const b=study.queue[0];
+  const denom = study.done + study.queue.length;
+  const pct = denom? Math.round(study.done/denom*100):0;
+  const header=`
+    <div class="progress">
+      <button class="btn ghost sm" onclick="setView('dashboard')">✕</button>
+      <div class="track"><i style="width:${pct}%"></i></div>
+      <span class="lab">${study.done}/${denom}</span>
+    </div>`;
+  const m=study.mode;
+  if(m==='flip') renderFlip(b,header);
+  else if(m==='type') renderType(b,header);
+  else renderMC(b,header,m==='listen'); // mc | listen
+}
+
+function distractors(b){
+  const pool=study.scope.filter(x=>x.id!==b.id);
+  for(let i=pool.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[pool[i],pool[j]]=[pool[j],pool[i]];}
+  const opts=[b,...pool.slice(0,3)];
+  for(let i=opts.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[opts[i],opts[j]]=[opts[j],opts[i]];}
+  return opts;
+}
+const soundOf=b=> (b.sounds&&b.sounds[0])?b.sounds[0].url:null;
+
+function renderMC(b,header,listen){
+  const opts=distractors(b);
+  view.innerHTML=`<div class="study">${header}
+    <div class="qcard card">
+      ${listen
+        ? `<div class="qimg hidden">Nur Hören — welcher Vogel ist das?</div>`
+        : (b.image?`<img class="qimg" src="${esc(b.image)}" alt="">`:`<div class="qimg hidden">Kein Bild</div>`)}
+      <div class="player" style="justify-content:center">
+        <button class="playbtn" id="qplay">▶</button>
+        <div class="spectro" id="spectro" style="max-width:240px">${'<i></i>'.repeat(20)}</div>
+      </div>
+      <div class="choices" id="choices">
+        ${opts.map((o,i)=>`<button class="choice" data-id="${o.id}"><span class="num">${i+1}</span>${esc(o.de)}</button>`).join('')}
+      </div>
+      <div class="fb" id="fb"></div>
+    </div></div>`;
+  registerSpectro($('#spectro'));
+  const url=soundOf(b);
+  $('#qplay').onclick=()=>playUrl(url);
+  autoplay(url); // automatisch anspielen
+  $$('#choices .choice').forEach(btn=>btn.onclick=()=>answerMC(btn,b));
+  study._keys=opts;
+}
+function answerMC(btn,b){
+  if(study._answered) return; study._answered=true;
+  const correct = btn.dataset.id===b.id;
+  $$('#choices .choice').forEach(x=>{ x.style.pointerEvents='none';
+    if(x.dataset.id===b.id) x.classList.add('correct');
+    else if(x===btn) x.classList.add('wrong'); });
+  if(study.mode==='listen' && b.image){ const im=$('.qimg'); if(im){ im.outerHTML=`<img class="qimg" src="${esc(b.image)}" style="margin-top:8px">`; } }
+  const fb=$('#fb'); fb.className='fb '+(correct?'ok':'no'); fb.textContent=correct?'Richtig!':`Das war: ${b.de}`;
+  finishCard(b,correct);
+}
+
+function renderType(b,header){
+  view.innerHTML=`<div class="study">${header}
+    <div class="qcard card">
+      ${b.image?`<img class="qimg" src="${esc(b.image)}" alt="">`:`<div class="qimg hidden">Kein Bild</div>`}
+      <div class="player" style="justify-content:center;margin-bottom:8px">
+        <button class="playbtn" id="qplay">▶</button>
+        <div class="spectro" id="spectro" style="max-width:240px">${'<i></i>'.repeat(20)}</div>
+      </div>
+      <input class="input" id="typein" placeholder="Deutscher Name…" autocomplete="off" style="text-align:center;font-family:var(--display);font-size:18px">
+      <div class="fb" id="fb"></div>
+      <button class="btn" id="typecheck" style="width:100%;margin-top:8px">Prüfen</button>
+    </div></div>`;
+  registerSpectro($('#spectro'));
+  const url=soundOf(b); $('#qplay').onclick=()=>playUrl(url); autoplay(url);
+  const inp=$('#typein'); inp.focus();
+  const check=()=>{
+    if(study._answered) return; study._answered=true;
+    const norm=s=>s.toLowerCase().replace(/[\s\-]/g,'').replace(/ß/g,'ss');
+    const correct = lev(norm(inp.value),norm(b.de))<=1;
+    inp.style.borderColor = correct?'var(--primary)':'var(--robin)';
+    const fb=$('#fb'); fb.className='fb '+(correct?'ok':'no'); fb.textContent=correct?'Richtig!':`Richtig wäre: ${b.de}`;
+    $('#typecheck').textContent='Weiter'; $('#typecheck').onclick=()=>{ study._answered=false; advance(b,correct); };
+    finishCard(b,correct,true);
+  };
+  $('#typecheck').onclick=check;
+  inp.onkeydown=e=>{ if(e.key==='Enter') check(); };
+}
+// Levenshtein für Tipp-Toleranz
+function lev(a,b){const m=a.length,n=b.length;const d=Array.from({length:m+1},(_,i)=>[i,...Array(n).fill(0)]);for(let j=0;j<=n;j++)d[0][j]=j;for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[m][n];}
+
+function renderFlip(b,header){
+  view.innerHTML=`<div class="study">${header}
+    <div class="qcard card">
+      ${b.image?`<img class="qimg" src="${esc(b.image)}" alt="">`:`<div class="qimg hidden">Kein Bild</div>`}
+      <div class="player" style="justify-content:center">
+        <button class="playbtn" id="qplay">▶</button>
+        <div class="spectro" id="spectro" style="max-width:240px">${'<i></i>'.repeat(20)}</div>
+      </div>
+      <div id="flipFront"><div class="qname faint" style="font-size:18px;margin-top:18px">Welcher Vogel ist das?</div>
+        <button class="btn ghost" style="margin-top:10px;width:100%" id="flipBtn">Auflösen</button></div>
+      <div id="flipBack" style="display:none">
+        <div class="qname reveal">${esc(b.de)}</div>${b.la?`<div class="la" style="font-size:13px">${esc(b.la)}</div>`:''}
+        <div class="gradebtns">
+          <button class="choice wrong" style="background:#F6E4DF" id="g_no">Nicht gewusst</button>
+          <button class="choice correct" id="g_yes">Gewusst</button>
+        </div>
+      </div>
+    </div></div>`;
+  registerSpectro($('#spectro'));
+  const url=soundOf(b); $('#qplay').onclick=()=>playUrl(url); autoplay(url);
+  $('#flipBtn').onclick=()=>{ $('#flipFront').style.display='none'; $('#flipBack').style.display='block'; };
+  $('#g_yes').onclick=()=>{ finishCard(b,true); setTimeout(()=>advance(b,true),300); };
+  $('#g_no').onclick =()=>{ finishCard(b,false); setTimeout(()=>advance(b,false),300); };
+}
+
+// gemeinsame Bewertung: Box updaten, speichern, ggf. weiter
+async function finishCard(b,correct,manualAdvance=false){
+  const res=grade(b,correct);
+  await DB.put('birds',b);
+  study.done++; if(correct)study.right++;
+  study.results.push({de:b.de,correct,box:b.box});
+  if(res.mastered) toast(`🥇 „${b.de}“ gemeistert!`, true);
+  if(!manualAdvance && (study.mode==='mc'||study.mode==='listen')){
+    setTimeout(()=>advance(b,correct), 1050);
+  }
+}
+function advance(b,correct){
+  study._answered=false;
+  study.queue.shift();
+  // Falsch beantwortete im freien/fälligen Lauf nochmal hinten anstellen
+  if(!correct){ const copy=birdById(b.id); if(copy){ const pos=Math.min(study.queue.length, 2+ (Math.random()*2|0)); study.queue.splice(pos,0,copy);} }
+  nextQuestion();
+}
+
+function endStudy(){
+  stopAudio();
+  const acc=study.total? Math.round(study.right/study.results.length*100):0;
+  const moved=study.results.filter(r=>r.correct).length;
+  view.innerHTML=`<div class="study"><div class="endcard card">
+    <div class="eyebrow">${study.set?esc(study.set.name):'Lerneinheit'}${study.freeMode?' · freies Üben':''}</div>
+    <div class="big" style="margin-top:8px">${acc}%</div>
+    <div class="muted" style="margin-top:4px">${study.right} von ${study.results.length} richtig</div>
+    <p class="fb ok" style="font-size:16px">${ acc>=90?'Stark! Die meisten wandern eine Box weiter. 🪶' : acc>=60?'Gut gemacht – dranbleiben lohnt sich.' : 'Übung macht den Vogelkenner. 🐦' }</p>
+    <div class="row" style="justify-content:center;margin-top:18px">
+      <button class="btn" onclick="startStudyPick('${study.set?study.set.id:''}')">Nochmal</button>
+      <button class="btn ghost" onclick="setView('dashboard')">Fertig</button>
+    </div>
+  </div></div>`;
+  study=null;
+}
+
+/* Tastatur im Study */
+document.addEventListener('keydown',e=>{
+  if(state.view!=='study'||!study)return;
+  if(e.key===' '){ const p=$('#qplay'); if(p){e.preventDefault();p.click();} }
+  if((study.mode==='mc'||study.mode==='listen')&&!study._answered&&/^[1-4]$/.test(e.key)){
+    const btn=$$('#choices .choice')[+e.key-1]; if(btn)btn.click();
+  }
+});
+
+/* ============================================================
+   10. INIT
+   ============================================================ */
+$('#nav').addEventListener('click',e=>{const b=e.target.closest('button'); if(b)setView(b.dataset.view);});
+$('#cta-study').onclick=()=>startStudyPick(null);
+
+(async function init(){
+  try{ await DB.open(); await loadAll(); }
+  catch(e){ console.error(e); }
+  render();
+  pingBackend(); // im Hintergrund
+})();
+window.setView=setView; // für inline-onclick
+</script>
+</body>
+</html>
