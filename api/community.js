@@ -75,17 +75,17 @@ module.exports = async (req, res) => {
     }
 
     if (action === 'score' && req.method === 'POST') {
-      const b = readBody(req);
-      const id   = clean(b.id, 40);
-      const name = clean(b.name, MAX_NAME);
+      const body = readBody(req);
+      const id   = clean(body.id, 40);
+      const name = clean(body.name, MAX_NAME);
       if (!id || !name) return json(res, 400, { error: 'id und name nötig' });
       const entry = {
         id, name,
-        xp:       Math.max(0, Math.min(10_000_000, (+b.xp || 0) | 0)),
-        level:    Math.max(1, Math.min(99, (+b.level || 1) | 0)),
-        streak:   Math.max(0, Math.min(100_000, (+b.streak || 0) | 0)),
-        mastered: Math.max(0, Math.min(100_000, (+b.mastered || 0) | 0)),
-        birds:    Math.max(0, Math.min(100_000, (+b.birds || 0) | 0)),
+        xp:       Math.max(0, Math.min(10_000_000, (+body.xp || 0) | 0)),
+        level:    Math.max(1, Math.min(99, (+body.level || 1) | 0)),
+        streak:   Math.max(0, Math.min(100_000, (+body.streak || 0) | 0)),
+        mastered: Math.max(0, Math.min(100_000, (+body.mastered || 0) | 0)),
+        birds:    Math.max(0, Math.min(100_000, (+body.birds || 0) | 0)),
         ts: Date.now(),
       };
       await kv(['HSET', 'fb:leaderboard', id, JSON.stringify(entry)]);
@@ -109,11 +109,11 @@ module.exports = async (req, res) => {
     }
 
     if (action === 'share' && req.method === 'POST') {
-      const b = readBody(req);
-      const name   = clean(b.name, 60);
-      const author = clean(b.author, MAX_NAME) || 'Anonym';
-      const desc   = clean(b.description, 140);
-      const birdsIn = Array.isArray(b.birds) ? b.birds.slice(0, MAX_BIRDS) : [];
+      const body = readBody(req);
+      const name   = clean(body.name, 60);
+      const author = clean(body.author, MAX_NAME) || 'Anonym';
+      const desc   = clean(body.description, 140);
+      const birdsIn = Array.isArray(body.birds) ? body.birds.slice(0, MAX_BIRDS) : [];
       if (!name || !birdsIn.length) return json(res, 400, { error: 'Name und mindestens ein Vogel nötig' });
       const birds = [];
       for (const x of birdsIn) {
@@ -142,11 +142,12 @@ module.exports = async (req, res) => {
     }
 
     if (action === 'chat' && req.method === 'POST') {
-      const b = readBody(req);
-      const name = clean(b.name, MAX_NAME);
-      const text = clean(b.text, MAX_TEXT);
+      const body = readBody(req);
+      const name = clean(body.name, MAX_NAME);
+      const text = clean(body.text, MAX_TEXT);
       if (!name || !text) return json(res, 400, { error: 'name und text nötig' });
-      const msg = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, text, ts: Date.now() };
+      const now = Date.now();
+      const msg = { id: now.toString(36) + Math.random().toString(36).slice(2, 6), name, text, ts: now };
       await kv(['LPUSH', 'fb:chat', JSON.stringify(msg)]);
       await kv(['LTRIM', 'fb:chat', 0, MAX_CHAT - 1]);
       return json(res, 200, { ok: true, msg });
