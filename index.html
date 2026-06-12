@@ -148,6 +148,7 @@ a{color:var(--primary)}
 .dot{width:8px;height:8px;border-radius:999px;display:inline-block}
 .bird .snd{position:absolute;bottom:8px;left:8px;width:30px;height:30px;border-radius:999px;background:rgba(22,36,28,.62);
   color:#fff;display:grid;place-items:center;backdrop-filter:blur(2px)}
+.bird.pending-bird{opacity:.75;pointer-events:none;border-style:dashed;border-color:var(--gold)}
 
 /* ---------- Sets ---------- */
 .setlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
@@ -516,6 +517,79 @@ function birdFromCache(profile){
   };
 }
 
+// Create a pending bird placeholder — shown immediately while enrichment runs in background.
+function birdPending(name){
+  return {
+    id:uid(), de:name, la:null, en:null,
+    image:null, sounds:[],
+    wiki:null, pending:true,
+    box:1, due:0, correct:0, wrong:0, lastReviewed:0, created:Date.now()
+  };
+}
+
+// ---- Background Enrichment Queue ----
+// Enriches pending birds in the background without blocking the UI.
+let _enrichQueue = [];
+let _enrichRunning = false;
+
+async function enqueueEnrichment(birds){
+  _enrichQueue.push(...birds);
+  if(!_enrichRunning) _runEnrichQueue();
+}
+
+async function _runEnrichQueue(){
+  if(_enrichRunning) return;
+  _enrichRunning = true;
+  let enriched = 0;
+  const maxRetries = 2;
+  const retryCount = new Map(); // id → attempts
+
+  while(_enrichQueue.length){
+    const b = _enrichQueue.shift();
+    // Skip if bird was removed or already enriched
+    const current = state.birds.find(x=>x.id===b.id);
+    if(!current || !current.pending) continue;
+    // Respect rate limits — wait until budget available
+    while(!apiLimiter.canCall('wiki') || !apiLimiter.canCall('xc')){
+      await new Promise(r=>setTimeout(r, 5000));
+    }
+    try{
+      await _throttleDelay(400);
+      const cands = await searchBirds(SEARCH_TERM[b.de]||b.de);
+      const fresh = await enrichFirstSpecies(cands);
+      if(fresh){
+        current.la=fresh.la; current.en=fresh.en; current.image=fresh.image;
+        current.sounds=fresh.sounds; current.wiki=fresh.wiki;
+        current.pending=false;
+        await DB.put('birds', current);
+        cacheBirdProfiles([current]);
+        enriched++;
+      } else {
+        current.pending=false;
+        await DB.put('birds', current);
+      }
+    }catch(e){
+      console.warn('Hintergrund-Anreicherung fehlgeschlagen für', b.de, e);
+      const attempts = (retryCount.get(b.id)||0) + 1;
+      retryCount.set(b.id, attempts);
+      if(attempts <= maxRetries){
+        // Re-queue at end so other birds can proceed
+        _enrichQueue.push(b);
+      } else {
+        // Give up after max retries — mark as no longer pending
+        current.pending=false;
+        await DB.put('birds', current);
+      }
+      await new Promise(r=>setTimeout(r, 3000));
+    }
+  }
+  _enrichRunning = false;
+  if(enriched){
+    toast(`🐦 ${enriched} ${enriched===1?'Vogel wurde':'Vögel wurden'} erfolgreich angereichert!`, true);
+    if(state.view==='collection'||state.view==='dashboard') render();
+  }
+}
+
 // Throttle helper: wait between sequential API-heavy operations to avoid 429.
 const _throttleDelay = ms => new Promise(r => setTimeout(r, ms));
 
@@ -861,10 +935,31 @@ function render(){
 }
 
 /* ---- Dashboard ---- */
+function pendingBanner(){
+  const pending = state.birds.filter(b=>b.pending);
+  if(!pending.length) return '';
+  const names = pending.slice(0,5).map(b=>b.de).join(', ');
+  const more = pending.length > 5 ? ` und ${pending.length-5} weitere` : '';
+  return `
+    <div class="card" style="padding:18px 20px;margin-top:18px;background:var(--gold-soft);border-color:var(--gold)">
+      <div style="display:flex;align-items:flex-start;gap:14px">
+        <span style="font-size:32px;line-height:1">🔭</span>
+        <div>
+          <strong style="font-size:15px">Deine neuen Vögel sind beauftragt!</strong>
+          <p style="margin:6px 0 0;font-size:13.5px;color:var(--ink-2)">Ein Ornithologe macht sich mit Mikro und Kamera auf den Weg und fügt <b>${esc(names)}${more}</b> bald zur Sammlung hinzu. Bilder &amp; Stimmen erscheinen automatisch.</p>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <span class="spin" style="width:14px;height:14px;border-width:2px"></span>
+            <span style="font-size:12px;color:var(--ink-3)">${pending.length} ${pending.length===1?'Vogel wird':'Vögel werden'} angereichert…</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderDashboard(){
   const total=state.birds.length;
-  const due=state.birds.filter(isDue).length;
-  const mastered=state.birds.filter(b=>b.box===5).length;
+  const due=state.birds.filter(b=>!b.pending && isDue(b)).length;
+  const mastered=state.birds.filter(b=>!b.pending && b.box===5).length;
   const answered=state.birds.reduce((a,b)=>a+(b.correct||0)+(b.wrong||0),0);
   const right=state.birds.reduce((a,b)=>a+(b.correct||0),0);
   const acc = answered? Math.round(right/answered*100):0;
@@ -927,6 +1022,8 @@ function renderDashboard(){
       <div class="stat card"><div class="v">${acc}%</div><div class="k">Trefferquote</div></div>
     </div>
 
+    ${pendingBanner()}
+
     ${ state.sets.length? `<div class="section-title">Deine Sets</div>
       <div class="setlist">${state.sets.slice(0,3).map(setCardHTML).join('')}</div>`:''}
 
@@ -963,6 +1060,14 @@ function filterPill(val,label,color){
     ${color?`<span class="dot" style="background:${color}"></span>`:''}${label}</button>`;
 }
 function birdCardHTML(b){
+  if(b.pending){
+    return `<div class="bird pending-bird">
+      <div class="ph">
+        <div class="noimg" style="background:var(--gold-soft)">🔭</div>
+      </div>
+      <div class="meta"><div class="dn">${esc(b.de)}</div><div class="la" style="color:var(--ink-3);font-size:11px"><span class="spin" style="width:10px;height:10px;border-width:1.5px;display:inline-block;vertical-align:middle;margin-right:4px"></span>Ornithologe unterwegs…</div></div>
+    </div>`;
+  }
   return `<button class="bird" onclick="openBird('${b.id}')">
     <div class="ph">
       ${b.image?`<img loading="lazy" src="${esc(b.image)}" alt="${esc(b.de)}">`:`<div class="noimg">🪶</div>`}
@@ -1127,27 +1232,28 @@ async function loadExamples(){
     }
   }
 
-  // Fallback for uncached birds
-  const newlyEnriched = [];
+  // For uncached birds: add as pending placeholders immediately, enrich in background
+  const pendingBirds = [];
   for(const name of uncached){
-    if(newlyEnriched.length) await _throttleDelay(350);
-    try{
-      const cands=await searchBirds(SEARCH_TERM[name]||name);
-      const b=await enrichFirstSpecies(cands);
-      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; newlyEnriched.push(b); }
-    }catch(e){ toast('Backend nicht erreichbar – Beispiele brauchen die Suche.'); break; }
+    const b = birdPending(name);
+    await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++;
+    pendingBirds.push(b);
   }
-
-  // Cache newly enriched birds
-  if(newlyEnriched.length) cacheBirdProfiles(newlyEnriched);
 
   if(added){
     // optional als Set bündeln
     const s={id:uid(),name:'Gartenvögel',description:'Beispiel-Set',birdIds:addedIds,created:Date.now()};
     await DB.put('sets',s); state.sets.push(s);
-    toast(`${added} Vögel + Set „Gartenvögel" geladen.`, true);
+    if(pendingBirds.length){
+      toast(`🐦 ${added} Vögel + Set „Gartenvögel" geladen. ${pendingBirds.length} ${pendingBirds.length===1?'Vogel wird':'Vögel werden'} noch angereichert…`, true);
+    } else {
+      toast(`${added} Vögel + Set „Gartenvögel" geladen.`, true);
+    }
   }
   setView('dashboard');
+
+  // Enrich pending birds in background
+  if(pendingBirds.length) enqueueEnrichment(pendingBirds);
 }
 async function loadBirdList(listName){
   const birds=BIRD_LISTS[listName]; if(!birds)return;
@@ -1175,27 +1281,28 @@ async function loadBirdList(listName){
     }
   }
 
-  // Fallback: fetch remaining birds one-by-one from Wikipedia/Wikidata
-  const newlyEnriched = [];
+  // For uncached birds: add as pending placeholders, enrich in background
+  const pendingBirds = [];
   for(const name of uncached){
-    if(newlyEnriched.length) await _throttleDelay(350);
-    try{
-      const cands=await searchBirds(SEARCH_TERM[name]||name);
-      const b=await enrichFirstSpecies(cands);
-      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; newlyEnriched.push(b); }
-    }catch(e){ toast('Backend nicht erreichbar – Listen brauchen die Suche.'); break; }
+    const b = birdPending(name);
+    await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++;
+    pendingBirds.push(b);
   }
-
-  // Cache newly enriched birds for next time
-  if(newlyEnriched.length) cacheBirdProfiles(newlyEnriched);
 
   if(addedIds.length){
     const existing=state.sets.find(s=>s.name===listName);
     if(existing){ existing.birdIds=[...new Set([...existing.birdIds,...addedIds])]; await DB.put('sets',existing); }
     else { const s={id:uid(),name:listName,description:`Vorgefertigte Liste`,birdIds:addedIds,created:Date.now()}; await DB.put('sets',s); state.sets.push(s); }
-    toast(`${added?added+' neue Vögel + ':''}Set „${listName}" geladen.`, true);
+    if(pendingBirds.length){
+      toast(`${added?added+' neue Vögel + ':''}Set „${listName}" geladen. ${pendingBirds.length} ${pendingBirds.length===1?'Vogel wird':'Vögel werden'} noch angereichert…`, true);
+    } else {
+      toast(`${added?added+' neue Vögel + ':''}Set „${listName}" geladen.`, true);
+    }
   }
   setView('dashboard');
+
+  // Enrich pending birds in background
+  if(pendingBirds.length) enqueueEnrichment(pendingBirds);
 }
 
 /* ---- Settings ---- */
@@ -1619,7 +1726,7 @@ let study=null;
 
 function startStudyPick(setId){
   const set = setId? state.sets.find(s=>s.id===setId) : null;
-  const scopeBirds = (set? set.birdIds.map(birdById).filter(Boolean) : state.birds);
+  const scopeBirds = (set? set.birdIds.map(birdById).filter(Boolean) : state.birds).filter(b=>!b.pending);
   if(scopeBirds.length===0){ toast('Keine Vögel zum Lernen. Füge erst welche hinzu.'); setView('add'); return; }
   state.view='study';
   $$('#nav button').forEach(b=>b.classList.remove('active'));
@@ -1653,7 +1760,7 @@ function startStudyPick(setId){
 
 function beginStudy(setId, mode){
   const set = setId? state.sets.find(s=>s.id===setId) : null;
-  const scope = (set? set.birdIds.map(birdById).filter(Boolean) : state.birds);
+  const scope = (set? set.birdIds.map(birdById).filter(Boolean) : state.birds).filter(b=>!b.pending);
   let queue = scope.filter(isDue);
   let freeMode=false;
   if(queue.length===0){ queue=[...scope]; freeMode=true; } // nichts fällig → freies Üben
