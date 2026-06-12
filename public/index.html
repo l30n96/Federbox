@@ -109,7 +109,6 @@ a{color:var(--primary)}
 .hero h1 b{font-weight:600;font-style:italic;color:var(--primary)}
 .hero .lead{font-size:clamp(17px,2.4vw,21px);color:var(--ink-2);margin-top:12px;max-width:46ch}
 .hero .lead .num{font-weight:600;color:var(--ink);font-family:var(--display);font-style:italic}
-.hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
 .hero .btn{padding:13px 22px;font-size:15px}
 
 /* Karteikasten — die fünf Boxen */
@@ -413,7 +412,17 @@ const DB = (()=>{
    ============================================================ */
 const PROXY = '/api/proxy';
 const BIRDS_API = '/api/birds';
+const CONFIG_API = '/api/config';
 let backendOk = null; // null=unbekannt
+
+// Öffentliche Server-Konfiguration (optionale Features per Env-Variable).
+let appConfig = {};
+async function loadConfig(){
+  try{
+    const r = await fetch(new URL(CONFIG_API, location.origin));
+    if(r.ok) appConfig = (await r.json()) || {};
+  }catch(e){ /* optional – ohne Config einfach ohne Extras weiter */ }
+}
 
 async function px(service, params){
   // Check rate limit before making a call
@@ -493,18 +502,60 @@ async function fetchCachedBirds(names){
   return map;
 }
 
-// Store enriched bird profile(s) in the server cache (fire-and-forget).
-function cacheBirdProfiles(birds){
-  const payload = birds.filter(b=>b&&b.de).map(b=>({
+// Store enriched bird profile(s) in the server cache — reliably.
+// Verifies the HTTP response, retries with backoff, and marks each bird
+// with synced:true in IndexedDB on success. Birds that could not be
+// uploaded keep synced:false and are re-synced on the next app start
+// (see syncBirdCache), so nothing gets lost when the tab is closed
+// mid-enrichment or a request fails silently.
+async function cacheBirdProfiles(birds){
+  const items = birds.filter(b=>b && b.de && b.wiki && !b.pending);
+  if(!items.length) return true;
+  const payload = items.map(b=>({
     de:b.de, la:b.la||null, en:b.en||null,
     image:b.image||null, sounds:b.sounds||[], wiki:b.wiki||null
   }));
-  if(!payload.length) return;
-  fetch(new URL(BIRDS_API+'?action=put', location.origin), {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({birds:payload})
-  }).catch(()=>{});
+  const maxAttempts = 3;
+  for(let attempt=1; attempt<=maxAttempts; attempt++){
+    try{
+      const r = await fetch(new URL(BIRDS_API+'?action=put', location.origin), {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({birds:payload}),
+        keepalive: payload.length<=5 // survives tab close for small payloads
+      });
+      const data = await r.json().catch(()=>null);
+      if(r.ok && data && data.stored){
+        for(const b of items){
+          if(b.synced) continue;
+          b.synced = true;
+          try{ await DB.put('birds', b); }catch(e){}
+        }
+        return true;
+      }
+      console.warn('Bird-Cache put fehlgeschlagen (HTTP '+r.status+'):', data && data.error);
+    }catch(e){
+      console.warn('Bird-Cache put nicht erreichbar:', e);
+    }
+    if(attempt<maxAttempts) await new Promise(res=>setTimeout(res, 1500*attempt));
+  }
+  return false;
+}
+
+// Boot-time sync: upload every enriched bird that never made it into the
+// server cache (synced flag missing). Runs in the background and ensures
+// eventual consistency between IndexedDB and the Upstash cache.
+let _cacheSyncRunning = false;
+async function syncBirdCache(){
+  if(_cacheSyncRunning) return;
+  _cacheSyncRunning = true;
+  try{
+    const unsynced = state.birds.filter(b=>!b.pending && !b.synced && b.de && b.wiki);
+    for(let i=0; i<unsynced.length; i+=25){
+      await cacheBirdProfiles(unsynced.slice(i, i+25));
+    }
+  }catch(e){ console.warn('Bird-Cache-Sync übersprungen:', e); }
+  _cacheSyncRunning = false;
 }
 
 // Create a full bird object from a cached profile.
@@ -512,7 +563,7 @@ function birdFromCache(profile){
   return {
     id:uid(), de:profile.de, la:profile.la, en:profile.en,
     image:profile.image, sounds:profile.sounds||[],
-    wiki:profile.wiki,
+    wiki:profile.wiki, synced:true, // kam vom Server-Cache → ist dort schon gespeichert
     box:1, due:0, correct:0, wrong:0, lastReviewed:0, created:Date.now()
   };
 }
@@ -560,7 +611,7 @@ async function _runEnrichQueue(){
     if(cached && cached.de){
       current.la=cached.la; current.en=cached.en; current.image=cached.image;
       current.sounds=cached.sounds||[]; current.wiki=cached.wiki;
-      current.pending=false;
+      current.pending=false; current.synced=true; // kam vom Server-Cache
       await DB.put('birds', current);
       enriched++;
       continue;
@@ -760,7 +811,7 @@ async function autoSyncSounds(){
     if(!apiLimiter.canCall('xc')){ break; }
     try{
       const sounds=await fetchSounds({la:b.la,en:b.en}, 3);
-      if(sounds.length){ b.sounds=sounds; await DB.put('birds',b); loaded++; }
+      if(sounds.length){ b.sounds=sounds; b.synced=false; await DB.put('birds',b); loaded++; cacheBirdProfiles([b]); }
     }catch(e){ console.warn('Stimmen-Sync abgebrochen:',e); break; }
   }
   soundSyncRunning=false;
@@ -792,7 +843,8 @@ async function repairBirds(){
         if(fresh && fresh.la){
           b.de=fresh.de; b.la=fresh.la; b.en=fresh.en; b.image=fresh.image; b.wiki=fresh.wiki;
           if(!b.sounds||!b.sounds.length) b.sounds=fresh.sounds;
-          await DB.put('birds',b); fixed++;
+          b.synced=false; await DB.put('birds',b); fixed++;
+          cacheBirdProfiles([b]);
         }
       }
     }catch(e){ console.warn('Reparatur übersprungen:',e); }
@@ -1022,10 +1074,6 @@ function renderDashboard(){
       <h1>${greet}, <b>Schnucki</b></h1>
       <p class="lead">${ due? `<span class="num">${due}</span> ${due===1?'Vogel wartet':'Vögel warten'} heute auf dich.` : 'Alles gelernt für heute – schön! Du kannst trotzdem frei üben.' }</p>
       ${gamebar}
-      <div class="hero-actions">
-        <button class="btn" onclick="startStudyPick(null)">${due?'Lernen starten':'Frei üben'}</button>
-        <button class="btn ghost" onclick="setView('add')">Vögel hinzufügen</button>
-      </div>
     </div>
 
     <div class="kasten">
@@ -1357,7 +1405,13 @@ async function renderSettings(){
       <strong style="color:var(--robin)">Zurücksetzen</strong>
       <p class="muted" style="font-size:13.5px;margin:8px 0 14px">Löscht alle Vögel und Sets unwiderruflich.</p>
       <button class="btn danger sm" onclick="resetAll()">Alles löschen</button>
-    </div>`;
+    </div>
+    ${appConfig.buyMeACoffee?`
+    <div class="card" style="padding:20px;margin-top:14px">
+      <strong>Gefällt dir Federbox?</strong>
+      <p class="muted" style="font-size:13.5px;margin:8px 0 14px">Wenn dir die App Freude macht, kannst du dem Entwickler einen Kaffee spendieren. ☕</p>
+      <a class="btn sm" href="${esc(appConfig.buyMeACoffee)}" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+    </div>`:''}`;
   const ok = backendOk!==null? backendOk : await pingBackend();
   const el=$('#bstatus');
   if(el) el.outerHTML = ok
@@ -1388,11 +1442,13 @@ async function resetAll(){
    8. MODALS — Bird-Detail & Set-Editor
    ============================================================ */
 const modalRoot=$('#modalRoot');
-function closeModal(){ stopAudio(); modalRoot.innerHTML=''; }
+let _openBirdId=null;
+function closeModal(){ stopAudio(); _openBirdId=null; modalRoot.innerHTML=''; }
 modalRoot.addEventListener('click',e=>{ if(e.target.classList.contains('scrim')) closeModal(); });
 
 function openBird(id){
   const b=birdById(id); if(!b)return;
+  _openBirdId=id;
   const inSets=state.sets.filter(s=>s.birdIds.includes(id)).map(s=>s.name);
   const images = b.images && b.images.length ? b.images : (b.image ? [b.image] : []);
   _carouselIdx=0;
@@ -1448,24 +1504,28 @@ function openBird(id){
   registerSpectro($('#spectro'));
   const url=b.sounds&&b.sounds[0]?b.sounds[0].url:null;
   $('#bigplay').onclick=()=>{ playUrl(url); };
-  // Bilder nachladen: standard 3, bei Ansicht mehr laden wenn API-Budget da ist
+  // Bilder nachladen: standard 3, bei Ansicht mehr laden wenn API-Budget da ist.
+  // Nur neu rendern, wenn wirklich NEUE Bilder dazukommen und der Dialog noch
+  // denselben Vogel zeigt — sonst flackert das Modal beim ersten Öffnen.
+  const rerenderIfOpen=()=>{ if(_openBirdId===id) openBird(id); };
   if((!b.images||b.images.length<3)&&b.la&&apiLimiter.canCall('wiki')){
     fetchBirdImages(b, 3).then(imgs=>{
-      if(imgs&&imgs.length>=(b.images||[]).length){ b.images=imgs; DB.put('birds',b); if($('#birdCarousel')) openBird(id); }
+      if(imgs&&imgs.length>(b.images||(b.image?[b.image]:[])).length){ b.images=imgs; DB.put('birds',b); rerenderIfOpen(); }
+      else if(imgs&&imgs.length&&!b.images){ b.images=imgs; DB.put('birds',b); } // merken, aber nicht neu rendern
     }).catch(()=>{});
   } else if(b.images&&b.images.length===3&&b.la&&apiLimiter.remaining('wiki')>5){
     // Lazy-load more images when user views the bird and budget allows
     fetchBirdImages(b, 6).then(imgs=>{
-      if(imgs&&imgs.length>b.images.length){ b.images=imgs; DB.put('birds',b); if($('#birdCarousel')) openBird(id); }
+      if(imgs&&imgs.length>b.images.length){ b.images=imgs; DB.put('birds',b); rerenderIfOpen(); }
     }).catch(()=>{});
   }
   // Stimmen fehlen? Automatisch nachladen, ohne dass der Nutzer etwas tun muss.
   if((!b.sounds||!b.sounds.length)&&(b.la||b.en)&&backendOk!==false&&apiLimiter.canCall('xc')){
     fetchSounds({la:b.la,en:b.en}, 3).then(async sounds=>{
-      if(sounds.length){ b.sounds=sounds; await DB.put('birds',b);
-        if($('#nosnd')) openBird(id); }
-      else { const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gefunden.'; }
-    }).catch(e=>{ console.warn('Stimmen laden fehlgeschlagen:',e); const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; });
+      if(sounds.length){ b.sounds=sounds; b.synced=false; await DB.put('birds',b); cacheBirdProfiles([b]);
+        if(_openBirdId===id && $('#nosnd')) openBird(id); }
+      else if(_openBirdId===id){ const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gefunden.'; }
+    }).catch(e=>{ console.warn('Stimmen laden fehlgeschlagen:',e); if(_openBirdId===id){ const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; } });
   } else if(b.sounds&&b.sounds.length===3&&(b.la||b.en)&&apiLimiter.remaining('xc')>3){
     // Lazy-load more sounds when budget allows
     fetchSounds({la:b.la,en:b.en}, 6).then(async sounds=>{
@@ -2007,7 +2067,17 @@ $('#cta-study').onclick=()=>startStudyPick(null);
   try{ await DB.open(); await loadAll(); }
   catch(e){ console.error(e); }
   render();
-  pingBackend().then(ok=>{ if(ok){ autoSyncSounds(); } repairBirds(); }); // Stimmen & Korrekturen im Hintergrund
+  loadConfig().then(()=>{ if(state.view==='settings') render(); }); // optionale Features (z.B. Buy-Me-a-Coffee)
+  pingBackend().then(ok=>{
+    if(ok){
+      autoSyncSounds();
+      syncBirdCache(); // noch nicht hochgeladene Vögel in den Server-Cache nachsynchronisieren
+      // Anreicherung fortsetzen, die durch einen Reload/Tab-Schließen unterbrochen wurde
+      const stuck = state.birds.filter(b=>b.pending);
+      if(stuck.length) enqueueEnrichment(stuck);
+    }
+    repairBirds();
+  }); // Stimmen & Korrekturen im Hintergrund
 })();
 window.setView=setView; // für inline-onclick
 window.loadBirdList=loadBirdList;

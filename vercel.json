@@ -12,6 +12,10 @@
     "api/birds.js": {
       "memory": 256,
       "maxDuration": 10
+    },
+    "api/config.js": {
+      "memory": 128,
+      "maxDuration": 5
     }
   }
 }
