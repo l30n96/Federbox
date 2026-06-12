@@ -430,7 +430,7 @@ async function searchBirds(term){
 // Vogelfilter über Wikidata: prüft ob Kandidaten tatsächlich Vögel auf Artniveau sind.
 async function filterBirds(cands){
   const withQid = cands.filter(c=>c.qid);
-  if(!withQid.length) return cands.filter(c=>!c.qid); // Ohne QID können wir nichts prüfen
+  if(!withQid.length) return []; // Ohne QID keine Validierung möglich → nichts anzeigen
   const qids = [...new Set(withQid.map(c=>c.qid))];
   try{
     const wd = await px('wikidata',{
