@@ -78,15 +78,13 @@ module.exports = async (req, res) => {
 
     const cacheKey = url.toString();
 
-    // Check in-memory cache first (only for read-only wiki/wikidata requests)
-    if (service !== 'xc') {
-      const hit = getCached(cacheKey);
-      if (hit) {
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
-        res.setHeader('X-Cache', 'HIT');
-        return res.status(hit.status).send(hit.body);
-      }
+    // Check in-memory cache first (all services including xeno-canto)
+    const hit = getCached(cacheKey);
+    if (hit) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(hit.status).send(hit.body);
     }
 
     const upstream = await fetch(url.toString(), {
@@ -94,8 +92,8 @@ module.exports = async (req, res) => {
     });
     const body = await upstream.text();
 
-    // Cache successful wiki/wikidata responses in memory
-    if (service !== 'xc' && upstream.status === 200) {
+    // Cache successful responses in memory (all services)
+    if (upstream.status === 200) {
       putCache(cacheKey, upstream.status, body);
     }
 
