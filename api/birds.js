@@ -151,7 +151,7 @@ module.exports = async (req, res) => {
       cmds.push(['SADD', INDEX_KEY, ...names]);
 
       const results = await kvPipeline(cmds);
-      const failed = results.filter(x => x && x.error);
+      const failed = results.filter(item => item && item.error);
       if (failed.length) {
         return json(res, 502, { error: 'KV-Schreibfehler', detail: failed[0].error, stored: names.length - failed.length });
       }
