@@ -21,6 +21,29 @@ const TARGETS = {
   commons:  'https://commons.wikimedia.org/w/api.php',
 };
 
+// Simple in-memory response cache to reduce duplicate upstream calls.
+// Serverless instances are ephemeral, so this only helps within one
+// invocation burst (warm container). Entries expire after 5 minutes.
+const responseCache = new Map();
+const CACHE_MAX = 200;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getCached(key) {
+  const entry = responseCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) { responseCache.delete(key); return null; }
+  return entry;
+}
+
+function putCache(key, status, body) {
+  if (responseCache.size >= CACHE_MAX) {
+    // Evict oldest entry
+    const first = responseCache.keys().next().value;
+    responseCache.delete(first);
+  }
+  responseCache.set(key, { status, body, ts: Date.now() });
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -53,10 +76,26 @@ module.exports = async (req, res) => {
       url.searchParams.set('key', process.env.XC_API_KEY || 'demo');
     }
 
+    const cacheKey = url.toString();
+
+    // Check in-memory cache first (all services including xeno-canto)
+    const hit = getCached(cacheKey);
+    if (hit) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(hit.status).send(hit.body);
+    }
+
     const upstream = await fetch(url.toString(), {
       headers: { 'User-Agent': 'Federbox/1.0 (Vogel-Lern-App)' },
     });
     const body = await upstream.text();
+
+    // Cache successful responses in memory (all services)
+    if (upstream.status === 200) {
+      putCache(cacheKey, upstream.status, body);
+    }
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     // Antworten dürfen ruhig gecacht werden – Artbeschreibungen ändern sich selten.

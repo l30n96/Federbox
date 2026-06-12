@@ -411,9 +411,16 @@ const DB = (()=>{
    Bilder & Audio laden direkt (kein CORS nötig).
    ============================================================ */
 const PROXY = '/api/proxy';
+const BIRDS_API = '/api/birds';
 let backendOk = null; // null=unbekannt
 
 async function px(service, params){
+  // Check rate limit before making a call
+  if(!apiLimiter.canCall(service)){
+    console.warn(`Rate limit erreicht für ${service}, warte…`);
+    await apiLimiter.waitForSlot(service);
+  }
+  apiLimiter.track(service);
   const u = new URL(PROXY, location.origin);
   u.searchParams.set('service', service);
   for(const [k,v] of Object.entries(params)) u.searchParams.set(k, v);
@@ -421,6 +428,97 @@ async function px(service, params){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.json();
 }
+
+// ---- API Rate Limiter ----
+// Tracks calls per service per minute to avoid hitting upstream limits.
+// Xeno-canto is more restrictive than Wikipedia, so lower budget.
+const apiLimiter = (function(){
+  const budgets = { xc: 8, wiki: 25, wiki_en: 25, wikidata: 20, commons: 20 };
+  const windowMs = 60_000; // 1 minute window
+  const calls = {}; // service → [timestamps]
+
+  function cleanup(service){
+    const now = Date.now();
+    if(!calls[service]) calls[service] = [];
+    calls[service] = calls[service].filter(t => now - t < windowMs);
+  }
+
+  return {
+    canCall(service){
+      cleanup(service);
+      const limit = budgets[service] || 20;
+      return calls[service].length < limit;
+    },
+    track(service){
+      if(!calls[service]) calls[service] = [];
+      calls[service].push(Date.now());
+    },
+    remaining(service){
+      cleanup(service);
+      const limit = budgets[service] || 20;
+      return Math.max(0, limit - (calls[service]||[]).length);
+    },
+    async waitForSlot(service){
+      // Wait until oldest call expires from window
+      const maxWait = 15_000;
+      const start = Date.now();
+      while(!this.canCall(service)){
+        if(Date.now()-start > maxWait) throw new Error('Rate limit timeout');
+        await new Promise(r=>setTimeout(r, 1000));
+      }
+    }
+  };
+})();
+
+// ---- Bird Profile Cache ----
+// Batch-fetch cached bird profiles by German name from the server.
+// Returns a Map: name → profile (only for cache hits).
+async function fetchCachedBirds(names){
+  const map = new Map();
+  if(!names.length) return map;
+  try{
+    const u = new URL(BIRDS_API, location.origin);
+    u.searchParams.set('action','get');
+    u.searchParams.set('names', names.join(','));
+    const r = await fetch(u);
+    if(!r.ok) return map;
+    const data = await r.json();
+    if(data.birds){
+      for(const [name,profile] of Object.entries(data.birds)){
+        map.set(name.toLowerCase(), profile);
+      }
+    }
+  }catch(e){ console.warn('Bird-Cache nicht erreichbar:', e); }
+  return map;
+}
+
+// Store enriched bird profile(s) in the server cache (fire-and-forget).
+function cacheBirdProfiles(birds){
+  const payload = birds.filter(b=>b&&b.de).map(b=>({
+    de:b.de, la:b.la||null, en:b.en||null,
+    image:b.image||null, sounds:b.sounds||[], wiki:b.wiki||null
+  }));
+  if(!payload.length) return;
+  fetch(new URL(BIRDS_API+'?action=put', location.origin), {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({birds:payload})
+  }).catch(()=>{});
+}
+
+// Create a full bird object from a cached profile.
+function birdFromCache(profile){
+  return {
+    id:uid(), de:profile.de, la:profile.la, en:profile.en,
+    image:profile.image, sounds:profile.sounds||[],
+    wiki:profile.wiki,
+    box:1, due:0, correct:0, wrong:0, lastReviewed:0, created:Date.now()
+  };
+}
+
+// Throttle helper: wait between sequential API-heavy operations to avoid 429.
+const _throttleDelay = ms => new Promise(r => setTimeout(r, ms));
+
 
 // Kandidaten über die deutsche Wikipedia suchen.
 // hastemplate:"Taxobox" beschränkt die Treffer auf Arten-Artikel,
@@ -529,15 +627,15 @@ async function enrichBird(cand){
 }
 
 function qScore(r){const o={A:0,B:1,C:2,D:3,E:4};const q=o[r.q]??5;const song=/song|gesang/i.test(r.type||'')?0:1;return q*2+song;}
-async function fetchSounds({la,en}){
+async function fetchSounds({la,en}, limit=3){
   let query=null;
   if(la){ const parts=la.trim().split(/\s+/); if(parts.length>=2) query=`gen:"${parts[0]}" sp:"${parts[1]}"`; }
   if(!query && en) query=`en:"${en}"`;
   if(!query) return [];
   try{
-    const data = await px('xc',{query, per_page:14});
+    const data = await px('xc',{query, per_page: Math.min(limit+2, 10)});
     const recs = (data?.recordings)||[];
-    return recs.sort((a,b)=>qScore(a)-qScore(b)).slice(0,6).map(r=>({
+    return recs.sort((a,b)=>qScore(a)-qScore(b)).slice(0,limit).map(r=>({
       id:r.id,
       url:(r.file&&String(r.file).startsWith('http'))?r.file:`https://xeno-canto.org/${r.id}/download`,
       type:r.type||'', q:r.q||'', loc:r.loc||'', rec:r.rec||'', length:r.length||r.lengthMin||''
@@ -552,6 +650,7 @@ async function pingBackend(){
 }
 
 // Stimmen automatisch nachladen — der Nutzer muss nichts tun.
+// Respektiert API-Limits: stoppt sobald Budget aufgebraucht.
 let soundSyncRunning=false;
 async function autoSyncSounds(){
   if(soundSyncRunning || backendOk===false) return;
@@ -560,8 +659,10 @@ async function autoSyncSounds(){
   soundSyncRunning=true;
   let loaded=0;
   for(const b of missing){
+    // Stop if xeno-canto budget is low
+    if(!apiLimiter.canCall('xc')){ break; }
     try{
-      const sounds=await fetchSounds({la:b.la,en:b.en});
+      const sounds=await fetchSounds({la:b.la,en:b.en}, 3);
       if(sounds.length){ b.sounds=sounds; await DB.put('birds',b); loaded++; }
     }catch(e){ console.warn('Stimmen-Sync abgebrochen:',e); break; }
   }
@@ -977,7 +1078,8 @@ async function addCandidate(i){
   try{
     const b = await enrichBird(c);
     await DB.put('birds',b); state.birds.push(b);
-    toast(`„${b.de}“ hinzugefügt${b.sounds.length?` · ${b.sounds.length} Stimmen`:''}.`);
+    cacheBirdProfiles([b]); // store in server cache for others
+    toast(`„${b.de}" hinzugefügt${b.sounds.length?` · ${b.sounds.length} Stimmen`:''}.`);
     if(btn){btn.outerHTML='<span class="pill" style="background:var(--primary-soft);color:var(--primary-2);border-color:var(--primary)">✓ Im Kasten</span>';}
   }catch(e){ toast('Konnte nicht hinzugefügt werden.'); if(btn){btn.disabled=false;btn.textContent='+ Hinzufügen';} }
 }
@@ -1003,20 +1105,47 @@ async function enrichFirstSpecies(cands){
 async function loadExamples(){
   toast('Lade Beispielvögel…');
   let added=0; const addedIds=[];
+
+  // Determine which birds we still need
+  const needed = [];
   for(const name of EXAMPLES){
     const exist=state.birds.find(b=>b.de.toLowerCase()===name.toLowerCase());
-    if(exist){ addedIds.push(exist.id); continue; }
+    if(exist){ addedIds.push(exist.id); }
+    else { needed.push(name); }
+  }
+
+  // Batch-fetch from cache first
+  const cached = await fetchCachedBirds(needed);
+  const uncached = [];
+  for(const name of needed){
+    const profile = cached.get(name.toLowerCase());
+    if(profile){
+      const b = birdFromCache(profile);
+      await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++;
+    } else {
+      uncached.push(name);
+    }
+  }
+
+  // Fallback for uncached birds
+  const newlyEnriched = [];
+  for(const name of uncached){
+    if(newlyEnriched.length) await _throttleDelay(350);
     try{
       const cands=await searchBirds(SEARCH_TERM[name]||name);
       const b=await enrichFirstSpecies(cands);
-      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; }
+      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; newlyEnriched.push(b); }
     }catch(e){ toast('Backend nicht erreichbar – Beispiele brauchen die Suche.'); break; }
   }
+
+  // Cache newly enriched birds
+  if(newlyEnriched.length) cacheBirdProfiles(newlyEnriched);
+
   if(added){
     // optional als Set bündeln
     const s={id:uid(),name:'Gartenvögel',description:'Beispiel-Set',birdIds:addedIds,created:Date.now()};
     await DB.put('sets',s); state.sets.push(s);
-    toast(`${added} Vögel + Set „Gartenvögel“ geladen.`, true);
+    toast(`${added} Vögel + Set „Gartenvögel" geladen.`, true);
   }
   setView('dashboard');
 }
@@ -1024,15 +1153,42 @@ async function loadBirdList(listName){
   const birds=BIRD_LISTS[listName]; if(!birds)return;
   toast(`Lade „${listName}"…`);
   let added=0; const addedIds=[];
+
+  // Determine which birds we still need (not already in collection)
+  const needed = [];
   for(const name of birds){
     const exist=state.birds.find(b=>b.de.toLowerCase()===name.toLowerCase());
-    if(exist){ addedIds.push(exist.id); continue; }
+    if(exist){ addedIds.push(exist.id); }
+    else { needed.push(name); }
+  }
+
+  // Batch-fetch from cache first → avoids dozens of API calls
+  const cached = await fetchCachedBirds(needed);
+  const uncached = [];
+  for(const name of needed){
+    const profile = cached.get(name.toLowerCase());
+    if(profile){
+      const b = birdFromCache(profile);
+      await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++;
+    } else {
+      uncached.push(name);
+    }
+  }
+
+  // Fallback: fetch remaining birds one-by-one from Wikipedia/Wikidata
+  const newlyEnriched = [];
+  for(const name of uncached){
+    if(newlyEnriched.length) await _throttleDelay(350);
     try{
       const cands=await searchBirds(SEARCH_TERM[name]||name);
       const b=await enrichFirstSpecies(cands);
-      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; }
+      if(b){ await DB.put('birds',b); state.birds.push(b); addedIds.push(b.id); added++; newlyEnriched.push(b); }
     }catch(e){ toast('Backend nicht erreichbar – Listen brauchen die Suche.'); break; }
   }
+
+  // Cache newly enriched birds for next time
+  if(newlyEnriched.length) cacheBirdProfiles(newlyEnriched);
+
   if(addedIds.length){
     const existing=state.sets.find(s=>s.name===listName);
     if(existing){ existing.birdIds=[...new Set([...existing.birdIds,...addedIds])]; await DB.put('sets',existing); }
@@ -1153,19 +1309,29 @@ function openBird(id){
   registerSpectro($('#spectro'));
   const url=b.sounds&&b.sounds[0]?b.sounds[0].url:null;
   $('#bigplay').onclick=()=>{ playUrl(url); };
-  // Bilder nachladen falls nur ein Bild vorhanden
-  if((!b.images||b.images.length<=1)&&b.la){
-    fetchBirdImages(b).then(imgs=>{
-      if(imgs&&imgs.length>1){ b.images=imgs; DB.put('birds',b); if($('#birdCarousel')) openBird(id); }
+  // Bilder nachladen: standard 3, bei Ansicht mehr laden wenn API-Budget da ist
+  if((!b.images||b.images.length<3)&&b.la&&apiLimiter.canCall('wiki')){
+    fetchBirdImages(b, 3).then(imgs=>{
+      if(imgs&&imgs.length>=(b.images||[]).length){ b.images=imgs; DB.put('birds',b); if($('#birdCarousel')) openBird(id); }
+    }).catch(()=>{});
+  } else if(b.images&&b.images.length===3&&b.la&&apiLimiter.remaining('wiki')>5){
+    // Lazy-load more images when user views the bird and budget allows
+    fetchBirdImages(b, 6).then(imgs=>{
+      if(imgs&&imgs.length>b.images.length){ b.images=imgs; DB.put('birds',b); if($('#birdCarousel')) openBird(id); }
     }).catch(()=>{});
   }
   // Stimmen fehlen? Automatisch nachladen, ohne dass der Nutzer etwas tun muss.
-  if((!b.sounds||!b.sounds.length)&&(b.la||b.en)&&backendOk!==false){
-    fetchSounds({la:b.la,en:b.en}).then(async sounds=>{
+  if((!b.sounds||!b.sounds.length)&&(b.la||b.en)&&backendOk!==false&&apiLimiter.canCall('xc')){
+    fetchSounds({la:b.la,en:b.en}, 3).then(async sounds=>{
       if(sounds.length){ b.sounds=sounds; await DB.put('birds',b);
         if($('#nosnd')) openBird(id); }
       else { const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gefunden.'; }
     }).catch(e=>{ console.warn('Stimmen laden fehlgeschlagen:',e); const el=$('#nosnd'); if(el) el.textContent='Keine Stimme gespeichert.'; });
+  } else if(b.sounds&&b.sounds.length===3&&(b.la||b.en)&&apiLimiter.remaining('xc')>3){
+    // Lazy-load more sounds when budget allows
+    fetchSounds({la:b.la,en:b.en}, 6).then(async sounds=>{
+      if(sounds.length>b.sounds.length){ b.sounds=sounds; await DB.put('birds',b); }
+    }).catch(()=>{});
   }
 }
 let _carouselIdx=0;
@@ -1180,12 +1346,12 @@ function carouselNav(dir){
   imgs[_carouselIdx].classList.add('active');
   if(dots[_carouselIdx])dots[_carouselIdx].classList.add('active');
 }
-async function fetchBirdImages(b){
+async function fetchBirdImages(b, limit=3){
   if(!b.la)return [];
   try{
     const data=await px('wiki',{
       action:'query', generator:'images', titles:b.la,
-      gimlimit:8, prop:'imageinfo', iiprop:'url', iiurlwidth:520
+      gimlimit: Math.min(limit+2, 10), prop:'imageinfo', iiprop:'url', iiurlwidth:520
     });
     const pages=(data?.query?.pages) ? Object.values(data.query.pages) : [];
     const imgs=pages
@@ -1193,7 +1359,7 @@ async function fetchBirdImages(b){
       .map(p=>p.imageinfo[0].thumburl||p.imageinfo[0].url)
       .filter(Boolean);
     if(b.image&&!imgs.includes(b.image)) imgs.unshift(b.image);
-    return imgs.slice(0,6);
+    return imgs.slice(0, limit);
   }catch(e){return [];}
 }
 async function nudgeBox(id,d){
