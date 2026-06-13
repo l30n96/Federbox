@@ -963,16 +963,15 @@ async function loadAll(){
   state.birds = await DB.all('birds');
   state.sets  = await DB.all('sets');
   // Normalize any legacy sound URLs (protocol-relative or HTTP) for iOS compatibility
-  let needsWrite = false;
   for(const b of state.birds){
     if(!b.sounds || !b.sounds.length) continue;
+    let changed = false;
     for(const s of b.sounds){
       if(!s.url) continue;
       const fixed = fixSoundUrl(s.url);
-      if(fixed !== s.url){ s.url = fixed; needsWrite = true; b.synced = false; }
+      if(fixed !== s.url){ s.url = fixed; changed = true; }
     }
-    if(needsWrite) await DB.put('birds', b);
-    needsWrite = false;
+    if(changed){ b.synced = false; await DB.put('birds', b); }
   }
 }
 // Normalize a sound URL: ensure HTTPS, handle protocol-relative
