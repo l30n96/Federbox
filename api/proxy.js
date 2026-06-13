@@ -19,6 +19,7 @@ const TARGETS = {
   wiki_en:  'https://en.wikipedia.org/w/api.php',
   wikidata: 'https://www.wikidata.org/w/api.php',
   commons:  'https://commons.wikimedia.org/w/api.php',
+  inat:     'https://api.inaturalist.org/v1/taxa',
 };
 
 // Simple in-memory response cache to reduce duplicate upstream calls.
@@ -65,7 +66,7 @@ module.exports = async (req, res) => {
     }
 
     // Wiki-APIs immer als JSON, mit origin=* (schadet serverseitig nicht).
-    if (service !== 'xc') {
+    if (service !== 'xc' && service !== 'inat') {
       if (!url.searchParams.has('format')) url.searchParams.set('format', 'json');
       url.searchParams.set('origin', '*');
     }

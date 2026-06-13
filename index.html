@@ -331,6 +331,7 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 </style>
 </head>
 <body>
+<script src="birds-db.js"></script>
 
 <header class="topbar">
   <div class="topbar-in">
@@ -444,7 +445,7 @@ async function px(service, params){
 // Tracks calls per service per minute to avoid hitting upstream limits.
 // Xeno-canto is more restrictive than Wikipedia, so lower budget.
 const apiLimiter = (function(){
-  const budgets = { xc: 10, wiki: 25, wiki_en: 25, wikidata: 30, commons: 20 };
+  const budgets = { xc: 10, wiki: 25, wiki_en: 25, wikidata: 30, commons: 20, inat: 50 };
   const windowMs = 60_000; // 1 minute window
   const calls = {}; // service → [timestamps]
 
@@ -618,11 +619,11 @@ async function _runEnrichQueue(){
       continue;
     }
 
-    // Respect rate limits — wait until budget available for ALL services
-    // Each bird needs: wiki (search) + wikidata (filter+enrich) + xc (sounds)
+    // Respect rate limits — wait until budget available for needed services
+    // Each bird needs: inat (image) + xc (sounds)
     const maxWait = 90_000;
     const waitStart = Date.now();
-    while(!apiLimiter.canCall('wiki') || !apiLimiter.canCall('wikidata') || !apiLimiter.canCall('xc')){
+    while(!apiLimiter.canCall('inat') || !apiLimiter.canCall('xc')){
       if(Date.now()-waitStart > maxWait) break;
       await new Promise(r=>setTimeout(r, 3000));
     }
@@ -671,108 +672,65 @@ async function _runEnrichQueue(){
 const _throttleDelay = ms => new Promise(r => setTimeout(r, ms));
 
 
-// Kandidaten über die deutsche Wikipedia suchen.
-// hastemplate:"Taxobox" beschränkt die Treffer auf Arten-Artikel,
-// damit keine Personen, Orte o.ä. auftauchen (z.B. bei „Kuckuck“).
-async function searchBirds(term){
-  const data = await px('wiki', {
-    action:'query', generator:'search', gsrsearch:`${term} hastemplate:"Taxobox"`, gsrlimit:12, gsrnamespace:0,
-    prop:'pageimages|pageprops|extracts', piprop:'thumbnail', pithumbsize:480,
-    exintro:1, explaintext:1, exsentences:2, exlimit:'max'
-  });
-  const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
-  pages.sort((a,b)=>(a.index??99)-(b.index??99));
-  const cands = pages
-    .filter(p=>!(p.pageprops && 'disambiguation' in p.pageprops)) // BKL-Seiten (z.B. „Star“) aussortieren
-    .map(p=>({
-      title:p.title, qid:p.pageprops?.wikibase_item||null,
-      image:p.thumbnail?.source||null, extract:p.extract||''
-    }));
-
-  // Nur echte Vögel (Aves) auf Artniveau behalten.
-  // Prüfung über Wikidata: Vogelspezifische Properties (eBird, IOC)
-  // und Taxon-Rang = Art (Q7432) oder Unterart (Q68947).
-  return filterBirds(cands);
-}
-
-// Umfassende Vogel-Gattungsliste (1740 Gattungen, Quelle: BirdNET/IOC).
-// Dient als schnelle Vorab-Validierung: nur Kandidaten, deren Gattung hier
-// enthalten ist, werden überhaupt als mögliche Vögel betrachtet.
-const BIRD_GENERA = new Set("Abeillia Abroscopus Aburria Acanthagenys Acanthidops Acanthis Acanthisitta Acanthiza Acanthorhynchus Accipiter Aceros Acridotheres Acrocephalus Acropternis Actenoides Actinodura Actitis Actophilornis Adelomyia Aechmophorus Aegithalos Aegithina Aegolius Aegotheles Aeronautes Aethia Aethopyga Agapornis Agelaioides Agelaius Agelasticus Aglaiocercus Agriornis Agropsar Ailuroedus Aimophila Aix Akletos Alaemon Alauda Alaudala Alca Alcedo Alcippe Aleadryas Alectoris Alectura Alethe Alipiopsitta Alisterus Alophoixus Alopochelidon Alopochen Amalocichla Amandava Amaurolimnas Amaurornis Amaurospiza Amazilia Amazona Amazonetta Amblycercus Amblyornis Amblyospiza Amblyramphus Ammodramus Ammomanes Ammonastes Ammoperdix Ammospiza Ampelioides Ampelion Ampelornis Amphilais Amphispiza Anabacerthia Anabathmis Anabazenops Anairetes Anas Ancistrops Andigena Androdon Andropadus Anhima Anhinga Anisognathus Anodorhynchus Anorrhinus Anous Anser Anseranas Anthipes Anthochaera Anthornis Anthoscopus Anthracoceros Anthracothorax Anthreptes Anthropoides Anthus Antigone Antilophia Antrostomus Anumara Anumbius Anurolimnas Apalis Apaloderma Aphanotriccus Aphantochroa Aphelocephala Aphelocoma Aphrastura Aplonis Aprositornis Aprosmictus Aptenodytes Apteryx Apus Aquila Ara Arachnothera Aramides Aramus Aratinga Arborophila Arcanator Archilochus Ardea Ardenna Ardeola Arenaria Argusianus Arizelocichla Arremon Arremonops Arses Artamus Artemisiospiza Artisornis Arundinax Arundinicola Asemospiza Asio Aspatha Asthenes Atalotriccus Atelornis Athene Atimastillas Atlapetes Atrichornis Attagis Atthis Atticora Attila Augastes Aulacorhynchus Auriparus Automolus Aviceda Aythya Baeolophus Baeopogon Balearica Bambusicola Bangsia Barnardius Bartramia Baryphthengus Basileuterus Batara Bathmocercus Batis Batrachostomus Berenicornis Berlepschia Bernieria Bias Biatas Bleda Blythipicus Boissonneaua Bolborhynchus Bolemoreus Bombycilla Bonasa Bostrychia Botaurus Brachygalba Brachypodius Brachypteryx Brachyramphus Bradornis Bradypterus Branta Brotogeris Bubalornis Bubo Bubulcus Bucanetes Buccanodon Bucco Bucephala Buceros Bucorvus Buphagus Burhinus Busarellus Butastur Buteo Buteogallus Buthraupis Butorides Bycanistes Cacatua Cacicus Cacomantis Cairina Calamanthus Calamonastes Calamospiza Calandrella Calcarius Calendulauda Calicalicus Calidris Caligavis Callacanthis Callaeas Calliope Callipepla Callocephalon Calocitta Calonectris Caloperdix Calothorax Calypte Calyptomena Calyptophilus Calyptorhynchus Camaroptera Campephaga Campephilus Campethera Campochaera Camptostoma Campylopterus Campylorhamphus Campylorhynchus Cantorchilus Capito Caprimulgus Capsiempis Caracara Cardellina Cardinalis Carduelis Cariama Carpococcyx Carpodacus Carpornis Carpospiza Carterornis Caryothraustes Casiornis Cassiculus Castanozoster Casuarius Catamblyrhynchus Catamenia Cathartes Catharus Catherpes Cecropis Celeus Centrocercus Centronyx Centropus Cephalopterus Cepphus Ceratogymna Ceratopipra Cercibis Cercococcyx Cercomacra Cercomacroides Cercotrichas Certhia Certhiasomus Certhiaxis Certhilauda Certhionyx Ceryle Cettia Ceuthmochares Ceyx Chaetocercus Chaetornis Chaetura Chalcomitra Chalcoparia Chalcophaps Chalcopsitta Chalcostigma Chalybura Chamaea Chamaepetes Chamaetylas Chamaeza Charadrius Charitospiza Charmosyna Chasiempis Chauna Chelidoptera Chelidorhynx Chenonetta Chersophilus Chiroxiphia Chlamydera Chlidonias Chloephaga Chlorestes Chloris Chloroceryle Chlorocharis Chlorochrysa Chlorocichla Chlorodrepanis Chlorophanes Chlorophonia Chloropicus Chloropsis Chlorornis Chlorospingus Chlorostilbon Chlorothraupis Cholornis Chondestes Chondrohierax Chordeiles Chroicocephalus Chrysococcyx Chrysocolaptes Chrysolophus Chrysomma Chrysomus Chrysophlegma Chrysothlypis Chrysuronia Chunga Ciccaba Cichladusa Cichlocolaptes Cichlopsis Cicinnurus Ciconia Cinclidium Cinclodes Cincloramphus Cinclosoma Cinclus Cinnycerthia Cinnyricinclus Cinnyris Circaetus Circus Cissa Cissopis Cisticola Cistothorus Clamator Clanga Clangula Claravis Clibanornis Climacteris Clytoctantes Clytolaema Clytorhynchus Cnemathraupis Cnemoscopus Cnemotriccus Cnipodectes Coccopygia Coccothraustes Coccycua Coccyzus Cochlearius Cochoa Coeligena Coereba Colaptes Colibri Colinus Colius Collocalia Colluricincla Colonia Colorhamphus Columba Columbina Compsothraupis Conioptilon Conirostrum Conopias Conopophaga Conopophila Conostoma Conothraupis Contopus Copsychus Coracias Coracina Coracopsis Coragyps Corapipo Corcorax Cormobates Corvinella Corvus Corydon Coryphaspiza Coryphistera Coryphospingus Corythaeola Corythaixoides Corythopis Corythornis Coscoroba Cossypha Coturnicops Coturnix Coua Cracticus Cranioleuca Crateroscelis Crax Creagrus Creatophora Creurgops Crex Crinifer Criniger Crithagra Crotophaga Crypsirina Cryptillas Cryptoleucopteryx Cryptospiza Crypturellus Cuculus Culicicapa Culicivora Curaeus Cutia Cyanerpes Cyanicterus Cyanistes Cyanocitta Cyanocompsa Cyanocorax Cyanoderma Cyanoliseus Cyanoloxia Cyanolyca Cyanomitra Cyanopica Cyanoptila Cyanoramphus Cyclarhis Cygnus Cymbilaimus Cymbirhynchus Cynanthus Cyornis Cyphorhinus Cypsiurus Cypsnagra Cyrtonyx Dacelo Dacnis Dactylortyx Daphoenositta Daptrius Dasylophus Dasyornis Deconychura Delichon Deltarhynchus Dendragapus Dendrexetastes Dendrocincla Dendrocitta Dendrocolaptes Dendrocopos Dendrocoptes Dendrocygna Dendronanthus Dendroperdix Dendroplex Dendrortyx Deroptyus Dicaeum Dichrozona Dicrurus Diglossa Dinemellia Dinopium Diopsittaca Diuca Dives Dixiphia Dolichonyx Donacobius Donacospiza Doryfera Drepanis Drepanornis Dreptes Dromas Dromococcyx Drymodes Drymophila Drymornis Dryobates Dryocopus Dryolimnas Dryoscopus Dubusia Ducula Dulus Dumetella Dumetia Dysithamnus Eclectus Edolisoma Egretta Elachura Elaenia Elanoides Elanus Electron Eleoscytalopus Eleothreptus Elminia Elseyornis Emberiza Emberizoides Embernagra Eminia Empidonax Empidonomus Enicognathus Enicurus Entomodestes Entomyzon Eolophus Eophona Eopsaltria Epimachus Epinecrophylla Eremomela Eremophila Eremopterix Erithacus Erpornis Erythropitta Esacus Estrilda Eubucco Euchrepomis Eucometis Eudocimus Eudromia Eudynamys Eudyptula Eugenes Eugralla Eumomota Eumyias Euodice Eupetes Eupetomena Euphagus Eupherusa Euphonia Euplectes Eupodotis Eupsittula Euptilotis Eurillas Eurocephalus Eurostopodus Eurylaimus Eurypyga Eurystomus Euscarthmus Eutoxeres Falcipennis Falco Falculea Falcunculus Ferminia Ficedula Florisuga Fluvicola Formicarius Formicivora Forpus Foudia Foulehaio Francolinus Fraseria Fratercula Frederickena Fregata Fringilla Fulica Fulmarus Fulvetta Furnarius Galbalcyrhynchus Galbula Galerida Gallicrex Gallinago Gallinula Gallirallus Galloperdix Gallus Gampsonyx Gampsorhynchus Garrulax Garrulus Gavia Gavicalis Gecinulus Gelochelidon Geocerthia Geococcyx Geoffroyus Geokichla Geopelia Geositta Geospizopsis Geothlypis Geotrygon Geranoaetus Geranospiza Geronticus Gerygone Glareola Glaucidium Glaucis Gliciphila Glossopsitta Glyphorynchus Gnorimopsar Gorsachius Gracula Gracupica Grallaria Grallaricula Grallina Grammatoptila Granatellus Granatina Grantiella Graydidascalus Grus Guaruba Gubernetes Guira Guttera Gygis Gymnobucco Gymnocichla Gymnomystax Gymnomyza Gymnopithys Gymnorhina Gymnorhinus Gymnoris Gyps Habia Haematopus Haematortyx Haemorhous Hafferia Halcyon Haliaeetus Haliastur Hapalocrex Hapalopsittaca Hapaloptila Haplophaedia Haplospiza Harpactes Harpagus Harpia Harpyopsis Hedydipna Heliangelus Helicolestes Heliobletus Heliodoxa Heliomaster Heliornis Hellmayrea Helmitheros Hemicircus Hemignathus Hemiprocne Hemipus Hemispingus Hemithraupis Hemitriccus Hemixos Henicorhina Herpetotheres Herpsilochmus Heterocercus Heteromirafra Heteromyias Heterophasia Heterospingus Hieraaetus Hierococcyx Himantopus Himatione Hippolais Hirundinea Hirundo Histrionicus Horornis Hydrobates Hydrocoloeus Hydrophasianus Hydroprogne Hydropsalis Hydrornis Hylexetastes Hylia Hylocharis Hylocichla Hylomanes Hylopezus Hylophilus Hylophylax Hylorchilus Hymenops Hypergerus Hypnelus Hypocnemis Hypocnemoides Hypocolius Hypoedaleus Hypopyrrhus Hypothymis Hypsipetes Ianthocincla Ibidorhyncha Ibycter Ichthyaetus Icteria Icterus Ictinia Idiopsar Iduna Ifrita Ilicura Illadopsis Incaspiza Indicator Inezia Iodopleura Iole Irania Irena Iridosornis Isleria Ispidina Ithaginis Ixobrychus Ixonotus Ixoreus Ixos Ixothraupis Jacamaralcyon Jacamerops Jacana Juliamyia Junco Jynx Kaupifalco Kenopia Ketupa Klais Kleinothraupis Knipolegus Kurochkinegramma Lacedo Lafresnaya Lagonosticta Lagopus Lalage Lampornis Lampropsar Lamprospiza Lamprotornis Laniarius Laniisoma Lanio Laniocera Lanius Larosterna Larus Larvivora Laterallus Lathamus Lathrotriccus Laticilla Legatus Leiopicus Leiothlypis Leiothrix Leistes Lepidocolaptes Lepidopyga Lepidothrix Leptasthenura Leptocoma Leptodon Leptopoecile Leptopogon Leptoptilos Leptosittaca Leptosomus Leptotila Lesbia Leucippus Leucochloris Leucogeranus Leucophaeus Leucopternis Leucosarcia Leucosticte Lewinia Lichenostomus Lichmera Limnoctites Limnodromus Limnornis Limnothlypis Limosa Linaria Liocichla Lioparus Liosceles Lipaugus Lissotis Lochmias Locustella Lonchura Lophaetus Lophoceros Lophochroa Lophodytes Lophonetta Lophophanes Lophophorus Lophorina Lophostrix Lophotriccus Lophura Loriculus Lorius Loxia Loxioides Loxops Lullula Lurocalis Luscinia Lybius Lycocorax Lymnocryptes Lyncornis Machaerirhynchus Machaeropterus Machetornis Machlolophus Mackenziaena Macroagelaius Macronus Macronyx Macropygia Macrosphenus Magumma Malaconotus Malacopteron Malacoptila Malacorhynchus Malcorus Malia Malimbus Malurus Manacus Manorina Mareca Margarops Margarornis Masius Mazaria Mecocerculus Megaceryle Megalurus Megapodius Megapomatorhinus Megarynchus Megascops Megastictus Megaxenops Meiglyptes Melaenornis Melampitta Melanerpes Melaniparus Melanitta Melanochlora Melanocorypha Melanodera Melanodryas Melanopareia Melanoptila Melanorectes Melanospiza Melanotis Meleagris Meliarchus Melidectes Melidora Melilestes Meliphaga Melithreptus Mellisuga Melocichla Melopsittacus Melopyrrha Melospiza Melozone Menura Mergus Merops Merulaxis Mesembrinibis Mesitornis Metallura Metopidius Metopothrix Metriopelia Micrastur Micrathene Microbates Microcerculus Microeca Micromonacha Micronisus Micropsitta Micropternus Micropygia Microrhopias Microspingus Microxenops Milvago Milvus Mimus Minla Mino Mionectes Mirafra Mitrephanes Mitrospingus Mitu Mixornis Mniotilta Modulatrix Mohoua Molothrus Momotus Monarcha Monasa Montecincla Monticola Montifringilla Morococcyx Morphnarchus Morus Motacilla Mulleripicus Muscicapa Muscigralla Muscipipra Muscisaxicola Musophaga Mustelirallus Myadestes Mycerobas Mycteria Myiagra Myiarchus Myiobius Myioborus Myiodynastes Myiomela Myiopagis Myiophobus Myiopsitta Myiornis Myiotheretes Myiothlypis Myiotriccus Myiozetetes Myophonus Myornis Myrmeciza Myrmecocichla Myrmelastes Myrmoborus Myrmochanes Myrmoderus Myrmophylax Myrmorchilus Myrmornis Myrmothera Myrmotherula Myrtis Mystacornis Myza Myzomela Napothera Nasica Nectarinia Nemosia Neochmia Neocossyphus Neoctantes Neomixis Neomorphus Neopelma Neophema Neopipo Neothraupis Nephelomyias Nephelornis Nesillas Nesoctites Nesoenas Nesoptilotis Nesospingus Nestor Netta Newtonia Nicator Nigrita Nilaus Niltava Ninox Nisaetus Nonnula Notharchus Nothocercus Nothocrax Nothoprocta Nothura Notiomystis Notopholia Nucifraga Numenius Numida Nyctanassa Nyctibius Nycticorax Nyctidromus Nyctiphrynus Nyctipolus Nyctiprogne Nyctyornis Nymphicus Nystalus Oceanodroma Ochetorhynchus Ochthoeca Ochthornis Ocreatus Ocyceros Ocyphaps Odontophorus Odontorchilus Oena Oenanthe Ognorhynchus Oncostoma Oneillornis Onychognathus Onychoprion Onychorhynchus Opisthocomus Oporornis Orchesticus Oreoica Oreolais Oreophasis Oreopholus Oreortyx Oreoscoptes Oreoscopus Oreothlypis Oreothraupis Oreotrochilus Oressochen Oriolus Oriturus Ornithion Orochelidon Ortalis Orthogonys Orthonyx Orthopsittaca Orthotomus Ortygospiza Otidiphaps Otocichla Otus Oxylabes Oxyruncus Oxyura Pachycare Pachycephala Pachyramphus Pachysylvia Pandion Panterpe Panurus Panyptila Parabuteo Paraclaravis Paradisaea Paradoxornis Pardalotus Pardirallus Parkerthraustes Parkesia Paroaria Parophasma Paroreomyza Parotia Parus Passer Passerculus Passerella Passerina Pastor Patagioenas Patagona Pavo Pelargopsis Pelecanus Peliperdix Pellorneum Peltops Penelope Penelopides Penelopina Peneothello Percnostola Perdicula Perdix Pericrocotus Periparus Periporphyrus Perisoreus Perissocephalus Pernis Petrochelidon Petroica Petronia Peucaea Peucedramus Pezopetes Pezoporus Phacellodomus Phaenicophaeus Phaenicophilus Phaenostictus Phaeochroa Phaeomyias Phaethon Phaethornis Phaetusa Phainopepla Phalacrocorax Phalaenoptilus Phalaropus Phapitreron Phaps Pharomachrus Phasianus Phedina Phegornis Phelpsia Pheucticus Pheugopedius Philemon Philentoma Philesturnus Philetairus Philortyx Philydor Phimosus Phlegopsis Phleocryptes Phlogophilus Phodilus Phoebastria Phoenicircus Phoeniconaias Phoenicoparrus Phoenicopterus Phoeniculus Phoenicurus Pholia Phonygammus Phragmacia Phrygilus Phylidonyris Phyllastrephus Phyllergates Phyllomyias Phylloscartes Phylloscopus Phytotoma Piaya Pica Picoides Piculus Picumnus Picus Pinicola Pionites Pionopsitta Pionus Pipile Pipilo Pipra Pipraeidea Pipreola Piprites Piranga Pitangus Pithys Pitohui Pitta Pittasoma Pityriasis Platalea Platycercus Platylophus Platyrinchus Platysmurus Platysteira Plectorhyncha Plectrophenax Plegadis Plocepasser Ploceus Pluvialis Pluvianus Pnoepyga Podargus Podiceps Podilymbus Poecile Poecilodryas Poecilostreptus Poecilotriccus Pogoniulus Pogonocichla Poicephalus Poliocrania Polioptila Polyplectron Polystictus Polytelis Polytmus Pomarea Pomatorhinus Pomatostomus Poodytes Pooecetes Poospiza Porphyrio Porphyriops Porphyrospiza Porzana Premnoplex Premnornis Primolius Prinia Prionochilus Prionops Priotelus Probosciger Procarduelis Procnias Progne Promerops Prosopeia Prosthemadera Protonotaria Prunella Psaltriparus Psarisomus Psarocolius Psephotus Pseudasthenes Pseudastur Pseudelaenia Pseudibis Pseudocolaptes Pseudocolopteryx Pseudoleistes Pseudonigrita Pseudopodoces Pseudorectes Pseudoseisura Pseudospingus Pseudotriccus Psilopogon Psilopsiagon Psilorhamphus Psilorhinus Psiloscops Psittacara Psittacula Psittacus Psittinus Psittiparus Psophia Psophocichla Psophodes Pteridophora Pternistis Pterocles Pterodroma Pteroglossus Pteroptochos Pteruthius Ptilinopus Ptiliogonys Ptilocichla Ptilonorhynchus Ptilopachus Ptiloprora Ptiloris Ptilorrhoa Ptilotula Ptiloxena Ptyonoprogne Pucrasia Puffinus Pulsatrix Purnella Purpureicephalus Pycnonotus Pycnoptilus Pygarrhichas Pygiptila Pygochelidon Pygoscelis Pyriglena Pyrilia Pyrocephalus Pyroderus Pyrrhocorax Pyrrholaemus Pyrrhomyias Pyrrhula Pyrrhura Pytilia Quelea Querula Quiscalus Radjah Rallina Rallus Ramphastos Ramphocaenus Ramphocelus Ramphodon Ramphomicron Ramphotrigon Ramsayornis Randia Recurvirostra Regulus Reinwardtipicus Reinwardtoena Remiz Rhabdotorrhinus Rhea Rhegmatorhina Rhinocrypta Rhinopomastus Rhinortha Rhipidura Rhodinocichla Rhodophoneus Rhodospingus Rhodospiza Rhodostethia Rhodothraupis Rhopias Rhopocichla Rhopophilus Rhopornis Rhopospina Rhynchocyclus Rhynchophanes Rhynchopsitta Rhynchortyx Rhynchospiza Rhynchostruthus Rhynchotus Rhynochetos Rhyticeros Rhytipterna Riparia Rissa Rollulus Rostratula Rostrhamus Rubigula Rupicola Rupornis Rynchops Sakesphorus Salpinctes Salpornis Saltator Saltatricula Sapayoa Sappho Sarcops Sarothrura Sasia Saundersilarus Saxicola Sayornis Scelorchilus Scenopoeetes Schetba Schiffornis Schistes Schistochlamys Schoenicola Schoeniophylax Schoeniparus Sciaphylax Sclateria Scleroptila Sclerurus Scolopax Scopus Scotocerca Scytalopus Scythrops Seiurus Selasphorus Selenidera Seleucidis Semioptera Semnornis Sephanoides Sericornis Sericossypha Serilophus Serinus Serpophaga Setopagis Setophaga Sheppardia Sholicola Sialia Sicalis Sinosuthora Siphonorhis Sipia Sirystes Sitta Sittasomus Sittiparus Smicrornis Smithornis Smutsornis Snowornis Somateria Spartonoica Spatula Spelaeornis Spermestes Spermophaga Sphecotheres Spheniscus Sphenoeacus Sphenopsis Sphyrapicus Spiloptila Spilornis Spindalis Spinus Spiza Spizaetus Spizella Spizelloides Spiziapteryx Spizixos Spodiopsar Spodiornis Sporaeginthus Sporophila Sporopipes Stachyris Stactolaema Stagonopleura Steatornis Stelgidillas Stelgidopteryx Stenostira Stephanoaetus Stephanophorus Stephanoxis Stercorarius Sterna Sternula Stigmatura Stilpnia Stiphrornis Stipiturus Stomiopera Strepera Streptopelia Streptoprocne Strix Struthidea Sturnella Sturnia Sturnus Stymphalornis Sublegatus Sugomel Suiriri Sula Surnia Surniculus Suthora Swynnertonia Sylvia Sylvietta Sylviorthorhynchus Syma Symposiachrus Synallaxis Syndactyla Synoicus Syrigma Syrrhaptes Systellura Taccocua Tachornis Tachuris Tachybaptus Tachycineta Tachyeres Tachyphonus Tadorna Taeniopygia Taeniotriccus Talegalla Tangara Tanygnathus Tanysiptera Taoniscus Tapera Taraba Tarphonomus Tarsiger Tauraco Tchagra Teledromas Telophorus Temnurus Tephrodornis Terenotriccus Terenura Teretistris Terpsiphone Tersina Tesia Tetrao Tetraogallus Tetraophasis Tetrastes Tetrax Thalassarche Thalasseus Thalurania Thamnistes Thamnolaea Thamnomanes Thamnophilus Thectocercus Theristicus Thescelocichla Thinocorus Thlypopsis Thraupis Threnetes Threskiornis Thripadectes Thripophaga Thryomanes Thryophilus Thryorchilus Thryothorus Tiaris Tichodroma Tickellia Tigrisoma Tijuca Timalia Tinamus Tityra Tockus Todiramphus Todirostrum Todus Tolmomyias Topaza Touit Toxorhamphus Toxostoma Trachyphonus Tragopan Tregellasia Treron Tribonyx Trichodere Trichoglossus Tricholaema Tricholestes Trichothraupis Triclaria Tringa Trochalopteron Trochocercus Troglodytes Trogon Tumbezia Tunchiornis Turdinus Turdoides Turdus Turnix Turtur Tympanuchus Tyranneutes Tyrannopsis Tyrannulus Tyrannus Tyto Upucerthia Upupa Uraeginthus Uria Urocissa Urocolius Urocynchramus Urodynamis Uromyias Uropsalis Uropsila Urosphena Urosticte Urothraupis Vanellus Vanga Vermivora Vidua Vireo Vireolanius Volatinia Wetmorethraupis Willisornis Woodfordia Xanthocephalus Xanthomixis Xanthopsar Xanthotis Xema Xenerpestes Xenodacnis Xenoglaux Xenopipo Xenopirostris Xenops Xenopsaris Xenornis Xenospiza Xenotriccus Xenus Xiphidiopicus Xiphocolaptes Xipholena Xiphorhynchus Xolmis Yuhina Yungipicus Zapornia Zavattariornis Zebrilus Zeledonia Zenaida Zentrygon Zimmerius Zonotrichia Zoothera Zosterops".split(" "));
-
-// Vogelfilter: prüft ob Kandidaten tatsächlich Vögel auf Artniveau sind.
-// Primär über die Gattungsliste, sekundär über Wikidata-Properties.
-async function filterBirds(cands){
-  const withQid = cands.filter(c=>c.qid);
-  if(!withQid.length) return [];
-  const qids = [...new Set(withQid.map(c=>c.qid))];
-  try{
-    const wd = await px('wikidata',{
-      action:'wbgetentities', ids:qids.join('|'),
-      props:'claims', languages:'en'
-    });
-    const entities = wd?.entities || {};
-    const validQids = new Set();
-    for(const qid of qids){
-      const ent = entities[qid];
-      if(!ent || !ent.claims) continue;
-      // Wissenschaftlichen Namen holen (P225) und Gattung gegen Liste prüfen
-      const sciName = ent.claims.P225?.[0]?.mainsnak?.datavalue?.value;
-      const genus = sciName ? sciName.trim().split(/\s+/)[0] : null;
-      const genusMatch = genus && BIRD_GENERA.has(genus);
-      // Vogelspezifische Properties: P3444 (eBird), P4526 (IOC), P10243 (Avibase)
-      const propMatch = !!(ent.claims.P3444 || ent.claims.P4526 || ent.claims.P10243);
-      // Kandidat muss entweder in der Gattungsliste ODER vogelspezifische Properties haben
-      if(!genusMatch && !propMatch) continue;
-      // Taxon-Rang prüfen (P105): Q7432=Art, Q68947=Unterart
-      const rank = ent.claims.P105?.[0]?.mainsnak?.datavalue?.value?.id;
-      if(rank && rank!=='Q7432' && rank!=='Q68947') continue;
-      validQids.add(qid);
+// ---- Lokale Vogelsuche über BIRD_SPECIES_DATA (birds-db.js) ----
+// Suche über deutsche Namen, wissenschaftliche Namen und englische Namen.
+// Kein API-Call nötig — alles lokal, sofort, nur echte Vögel.
+function searchBirds(term){
+  if(!term) return Promise.resolve([]);
+  const q = term.toLowerCase().trim();
+  const results = [];
+  for(const [de, la, en] of BIRD_SPECIES_DATA){
+    const deLow = de.toLowerCase(), laLow = la.toLowerCase(), enLow = (en||'').toLowerCase();
+    let score = 0;
+    if(deLow === q || laLow === q) score = 100;
+    else if(deLow.startsWith(q) || laLow.startsWith(q)) score = 80;
+    else if(enLow === q) score = 70;
+    else if(enLow.startsWith(q)) score = 60;
+    else if(deLow.includes(q) || laLow.includes(q)) score = 40;
+    else if(enLow.includes(q)) score = 30;
+    else {
+      // Fuzzy: alle Wörter des Suchbegriffs müssen im Namen vorkommen
+      const words = q.split(/\s+/);
+      const combined = deLow + ' ' + laLow + ' ' + enLow;
+      if(words.length > 1 && words.every(w => combined.includes(w))) score = 20;
     }
-    return cands.filter(c => c.qid && validQids.has(c.qid));
-  }catch(e){
-    // Bei Fehler: Gattungsliste als Fallback nutzen (statt alles durchzulassen)
-    // Wir können zwar den wiss. Namen nicht prüfen, aber lieber nichts zeigen
-    // als falsche Treffer — der Nutzer kann es erneut versuchen.
-    console.warn('filterBirds: Wikidata-Abfrage fehlgeschlagen', e);
-    return [];
+    if(score > 0) results.push({de, la, en: en||null, score});
+    if(results.length > 100) break; // schnell abbrechen bei zu vielen Treffern
   }
+  results.sort((a,b) => b.score - a.score);
+  const top = results.slice(0, 12);
+  // Format wie vorher: title, image, extract (image wird async via iNaturalist geladen)
+  return Promise.resolve(top.map(r => ({
+    title: r.de, la: r.la, en: r.en, image: null,
+    extract: r.la + (r.en ? ' · ' + r.en : '')
+  })));
 }
 
-// Klammerzusatz aus Wikipedia-Titeln entfernen: „Star (Art)“ → „Star“
+// Klammerzusatz aus Wikipedia-Titeln entfernen: „Star (Art)" → „Star"
 function cleanTitle(t){ return String(t||'').replace(/\s*\([^)]*\)\s*$/,'').trim(); }
 
-// Einen Kandidaten anreichern: wiss. Name (Wikidata) + Laute (Xeno-canto)
+// Einen Kandidaten anreichern: Bild (iNaturalist) + Laute (Xeno-canto)
 async function enrichBird(cand){
-  let la=null, en=null, de=cleanTitle(cand.title), image=cand.image;
-  if(cand.qid){
+  const de = cand.title || cand.de;
+  const la = cand.la || null;
+  const en = cand.en || null;
+  let image = cand.image || null;
+
+  // Bild über iNaturalist holen (Taxa-Endpunkt, kein API-Key nötig)
+  if(!image && la){
     try{
-      const wd = await px('wikidata',{action:'wbgetentities',ids:cand.qid,props:'labels|claims',languages:'de|en'});
-      const ent = wd?.entities?.[cand.qid];
-      if(ent){
-        en = ent.labels?.en?.value || null;
-        const p225 = ent.claims?.P225?.[0]?.mainsnak?.datavalue?.value;
-        // Nur vollständige Artnamen übernehmen (Gattung + Epitheton),
-        // z.B. „Sitta europaea" – reine Gattungsnamen wie „Sitta" ignorieren.
-        if(p225 && p225.trim().split(/\s+/).length >= 2) la = p225;
-        // Deutscher Name: der Wikipedia-Titel ist verlässlich deutsch. Das
-        // Wikidata-Label ist bei Taxa oft nur der wissenschaftliche Name –
-        // es dient nur als Ersatz, falls der Titel selbst wissenschaftlich ist.
-        const label = ent.labels?.de?.value;
-        if(la && de.toLowerCase()===la.toLowerCase() && label && label.toLowerCase()!==la.toLowerCase()){
-          de = cleanTitle(label);
-        }
-        if(!image){
-          const p18 = ent.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
-          if(p18) image = 'https://commons.wikimedia.org/wiki/Special:FilePath/'+encodeURIComponent(p18)+'?width=520';
-        }
+      const inat = await px('inat', {q: la, rank: 'species', per_page: '1'});
+      const taxon = inat?.results?.[0];
+      if(taxon && taxon.default_photo){
+        image = taxon.default_photo.medium_url || taxon.default_photo.square_url || null;
       }
-    }catch(e){/* weiter ohne Wikidata */}
+    }catch(e){ /* weiter ohne Bild */ }
   }
-  const sounds = await fetchSounds({la,en});
+
+  const sounds = await fetchSounds({la, en});
   return {
     id:uid(), de, la, en, image, sounds,
-    wiki:'https://de.wikipedia.org/wiki/'+encodeURIComponent(cand.title.replace(/ /g,'_')),
+    wiki: la ? 'https://de.wikipedia.org/wiki/'+encodeURIComponent(de.replace(/ /g,'_')) : null,
     box:1, due:0, correct:0, wrong:0, lastReviewed:0, created:Date.now()
   };
 }
@@ -860,7 +818,7 @@ async function repairBirds(){
           b.de=title; await DB.put('birds',b); fixed++; continue;
         }
       }
-      if(!b.la && !b.image && backendOk){
+      if(!b.la && !b.image){
         const cands=await searchBirds(SEARCH_TERM[b.de]||b.de);
         const fresh=await enrichFirstSpecies(cands);
         if(fresh && fresh.la){
@@ -1126,7 +1084,7 @@ function renderDashboard(){
   if(total===0){
     view.innerHTML = `
       <div class="hero"><h1>${greet}, <b>Schnucki</b></h1>
-      <p class="lead">Noch keine Vögel im Kasten. Leg los, indem du welche hinzufügst – per Suche, als fertiges Beispiel-Set oder von Hand.</p></div>
+      <p class="lead">Noch keine Vögel im Kasten. Leg los, indem du welche hinzufügst – per Suche oder als fertiges Beispiel-Set.</p></div>
       <div class="empty" style="margin-top:24px">
         <div class="ei">🪺</div><h3>Dein Kasten ist leer</h3>
         <p>Such einen Vogel, und Federbox holt automatisch Bild, deutschen + wissenschaftlichen Namen und Stimmen dazu.</p>
@@ -1248,7 +1206,6 @@ function renderAdd(){
     <div class="hero" style="margin-bottom:8px"><h1>Vögel hinzufügen</h1></div>
     <div class="tabs">
       <button class="${addTab==='search'?'active':''}" onclick="addTab='search';renderAdd()">Suchen</button>
-      <button class="${addTab==='manual'?'active':''}" onclick="addTab='manual';renderAdd()">Von Hand</button>
       <button class="${addTab==='examples'?'active':''}" onclick="addTab='examples';renderAdd()">Beispiele</button>
     </div>
     <div id="addBody"></div>`;
@@ -1265,24 +1222,6 @@ function renderAdd(){
     $('#goSearch').onclick=run;
     $('#q').onkeydown=e=>{if(e.key==='Enter')run()};
     $('#q').focus();
-  } else if(addTab==='manual'){
-    body.innerHTML=`
-      <div class="card" style="padding:20px;max-width:520px">
-        <label class="lbl">Deutscher Name *</label><input class="input" id="m_de" placeholder="z.B. Kohlmeise">
-        <label class="lbl">Wissenschaftlicher Name</label><input class="input" id="m_la" placeholder="z.B. Parus major">
-        <label class="lbl">Bild-URL</label><input class="input" id="m_img" placeholder="https://…">
-        <label class="lbl">Laut-URL (mp3)</label><input class="input" id="m_snd" placeholder="https://…">
-        <p class="faint" style="font-size:12.5px;margin:12px 0 0">Funktioniert komplett offline – ideal für eigene Aufnahmen oder wenn das Backend mal nicht erreichbar ist.</p>
-        <div class="row" style="margin-top:16px"><button class="btn" id="m_add">Hinzufügen</button></div>
-      </div>`;
-    $('#m_add').onclick=async()=>{
-      const de=$('#m_de').value.trim(); if(!de){toast('Bitte einen Namen eingeben.');return;}
-      const snd=$('#m_snd').value.trim();
-      const b={id:uid(),de,la:$('#m_la').value.trim()||null,en:null,image:$('#m_img').value.trim()||null,
-        sounds:snd?[{id:'manual',url:snd,type:'',q:'',loc:'',rec:'',length:''}]:[],
-        wiki:null,box:1,due:0,correct:0,wrong:0,lastReviewed:0,created:Date.now()};
-      await DB.put('birds',b); state.birds.push(b); toast(`„${de}“ hinzugefügt.`); renderAdd();
-    };
   } else {
     body.innerHTML=`
       <div style="display:flex;flex-direction:column;gap:14px;max-width:600px">
@@ -1312,8 +1251,8 @@ async function doSearch(term){
         <button class="btn sm" onclick="addCandidate(${i})">+ Hinzufügen</button>
       </div>`).join('');
   }catch(e){
-    box.innerHTML=`<div class="empty"><div class="ei">📡</div><h3>Backend nicht erreichbar</h3>
-      <p>Die Suche braucht die Serverless-Funktion. Nutze „Von Hand“, oder deploye/starte das Backend (siehe README).</p></div>`;
+    box.innerHTML=`<div class="empty"><div class="ei">⚠️</div><h3>Fehler bei der Suche</h3>
+      <p>Bitte versuch es erneut.</p></div>`;
   }
 }
 async function addCandidate(i){
@@ -1347,15 +1286,12 @@ const BIRD_LISTS={
   'Greifvögel':['Mäusebussard','Turmfalke','Sperber','Habicht','Rotmilan','Schwarzmilan','Wanderfalke','Wespenbussard','Rohrweihe','Baumfalke'],
   'Feldvögel':['Feldlerche','Goldammer','Kiebitz','Rebhuhn','Neuntöter','Dorngrasmücke','Braunkehlchen','Grauammer','Wachtel','Schafstelze']
 };
-// Mehrdeutige Namen brauchen einen präziseren Suchbegriff (Wikipedia-Artikel).
-const SEARCH_TERM={'Star':'Star (Art)'};
+// Mehrdeutige Namen: lokale Suche liefert immer korrekte Treffer.
+const SEARCH_TERM={};
 // Aus den Suchtreffern den ersten echten Vogel (mit wiss. Namen) übernehmen.
 async function enrichFirstSpecies(cands){
-  for(const c of cands.slice(0,3)){
-    const b=await enrichBird(c);
-    if(b.la) return b;
-  }
-  return cands[0] ? enrichBird(cands[0]) : null;
+  if(!cands.length) return null;
+  return enrichBird(cands[0]);
 }
 async function loadExamples(){
   toast('Lade Beispielvögel…');
@@ -1580,12 +1516,12 @@ function openBird(id){
   // Nur neu rendern, wenn wirklich NEUE Bilder dazukommen und der Dialog noch
   // denselben Vogel zeigt — sonst flackert das Modal beim ersten Öffnen.
   const rerenderIfOpen=()=>{ if(_openBirdId===id) openBird(id); };
-  if((!b.images||b.images.length<3)&&b.la&&apiLimiter.canCall('wiki')){
+  if((!b.images||b.images.length<3)&&b.la&&apiLimiter.canCall('inat')){
     fetchBirdImages(b, 3).then(imgs=>{
       if(imgs&&imgs.length>(b.images||(b.image?[b.image]:[])).length){ b.images=imgs; DB.put('birds',b); rerenderIfOpen(); }
       else if(imgs&&imgs.length&&!b.images){ b.images=imgs; DB.put('birds',b); } // merken, aber nicht neu rendern
     }).catch(()=>{});
-  } else if(b.images&&b.images.length===3&&b.la&&apiLimiter.remaining('wiki')>5){
+  } else if(b.images&&b.images.length===3&&b.la&&apiLimiter.remaining('inat')>5){
     // Lazy-load more images when user views the bird and budget allows
     fetchBirdImages(b, 6).then(imgs=>{
       if(imgs&&imgs.length>b.images.length){ b.images=imgs; DB.put('birds',b); rerenderIfOpen(); }
@@ -1620,18 +1556,19 @@ function carouselNav(dir){
 async function fetchBirdImages(b, limit=3){
   if(!b.la)return [];
   try{
-    const data=await px('wiki',{
-      action:'query', generator:'images', titles:b.la,
-      gimlimit: Math.min(limit+2, 10), prop:'imageinfo', iiprop:'url', iiurlwidth:520
-    });
-    const pages=(data?.query?.pages) ? Object.values(data.query.pages) : [];
-    const imgs=pages
-      .filter(p=>p.imageinfo&&p.imageinfo[0]&&/\.(jpg|jpeg|png|webp)/i.test(p.title||''))
-      .map(p=>p.imageinfo[0].thumburl||p.imageinfo[0].url)
-      .filter(Boolean);
-    if(b.image&&!imgs.includes(b.image)) imgs.unshift(b.image);
-    return imgs.slice(0, limit);
-  }catch(e){return [];}
+    const data=await px('inat',{q:b.la, rank:'species', per_page:'1'});
+    const taxon=data?.results?.[0];
+    if(!taxon) return b.image ? [b.image] : [];
+    const photos=(taxon.taxon_photos||[]).slice(0, limit).map(tp=>
+      tp.photo?.medium_url || tp.photo?.small_url
+    ).filter(Boolean);
+    // Fallback: default_photo
+    if(!photos.length && taxon.default_photo){
+      photos.push(taxon.default_photo.medium_url || taxon.default_photo.square_url);
+    }
+    if(b.image && !photos.includes(b.image)) photos.unshift(b.image);
+    return photos.slice(0, limit);
+  }catch(e){return b.image ? [b.image] : [];}
 }
 async function nudgeBox(id,d){
   const b=birdById(id); if(!b)return;
