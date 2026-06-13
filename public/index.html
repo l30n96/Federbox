@@ -1775,39 +1775,149 @@ async function analyzeFieldAudio(blob){
     if(status) status.textContent='Tippe zum Aufnehmen (5–15 Sek. ideal)';
 
     if(!data.results || !data.results.length){
-      if(results) results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei">🤷</div><h3>Kein Vogel erkannt</h3>
+      if(results) results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei">🤷</div><h3>Kein Vogel erkannt – nochmal versuchen</h3>
         <p>${data.error||'Versuche eine ruhigere Umgebung oder halte das Mikro näher zum Vogel.'}</p></div>`;
       return;
     }
-    if(results) results.innerHTML=`
-      <div class="section-title">Ergebnisse</div>
-      <div class="field-results">
-        ${data.results.map((r,i)=>`
-          <div class="field-result">
-            <div class="conf">${Math.round(r.confidence*100)}%</div>
-            <div class="fr-name"><div class="fr-de">${esc(r.common_name)}</div><div class="fr-la">${esc(r.scientific_name)}</div></div>
-            <button class="btn sm" onclick="addLiferByIdx(${i})">+ Lifer</button>
-          </div>`).join('')}
-      </div>`;
-    state._fieldResults = data.results.map(r=>({de:r.common_name, la:r.scientific_name, lat:lat||null, lon:lon||null}));
+    // Rätsel starten: User soll die Art selbst bestimmen
+    fieldChallenge = { results:data.results, lat:lat||null, lon:lon||null };
+    renderFieldChallenge();
   }catch(e){
     if(status) status.textContent='Tippe zum Aufnehmen (5–15 Sek. ideal)';
     if(results) results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei">⚠️</div><h3>Fehler</h3>
       <p>BirdNET konnte nicht erreicht werden. Bitte nochmal versuchen.</p></div>`;
   }
 }
-async function addLiferByIdx(i){
-  const r=(state._fieldResults||[])[i];
-  if(!r){toast('Ergebnis nicht mehr verfügbar.');return;}
-  await addLifer(r.de, r.la, r.lat, r.lon);
+/* ---- Feld-Rätsel: Art selbst bestimmen ---- */
+let fieldChallenge=null;
+function resetFieldChallenge(){
+  fieldChallenge=null;
+  const status=$('#recStatus'); if(status) status.textContent='Tippe zum Aufnehmen (5–15 Sek. ideal)';
+  const results=$('#fieldResults'); if(results) results.innerHTML='';
 }
-async function addLifer(de, la, lat, lon){
-  // Check if already in lifers
-  if(state.lifers.find(l=>l.de.toLowerCase()===de.toLowerCase())){
-    toast(`„${de}" ist schon in deiner Lebensliste.`);
-    return;
+function renderFieldChallenge(){
+  const results=$('#fieldResults');
+  if(!results || !fieldChallenge) return;
+  results.innerHTML=`
+    <div class="section-title">Vogel erkannt – bestimme selbst!</div>
+    <p class="muted" style="font-size:14px;margin:-6px 2px 8px">BirdNET hat eine Stimme erkannt. Wie willst du die Art bestimmen?</p>
+    <div class="modeselect">
+      <button class="mode" id="modeReveal"><div class="mt">🔍 Aufdecken</div><div class="md">Zeig mir direkt, welcher Vogel das ist.</div></button>
+      <button class="mode" id="modeType"><div class="mt">⌨️ Selbst eingeben</div><div class="md">Ich tippe den deutschen Namen selbst.</div></button>
+      <button class="mode" id="modeMc"><div class="mt">🎲 Multiple Choice</div><div class="md">Ich rate aus vier Möglichkeiten.</div></button>
+    </div>`;
+  $('#modeReveal').onclick=fieldReveal;
+  $('#modeType').onclick=fieldGuessType;
+  $('#modeMc').onclick=fieldMultipleChoice;
+}
+// Modus A – Aufdecken: deutscher + wiss. Name + Konfidenz, automatisch als Lifer
+async function fieldReveal(){
+  if(!fieldChallenge) return;
+  const top=fieldChallenge.results[0];
+  const results=$('#fieldResults');
+  results.innerHTML=`
+    <div class="section-title">Aufgedeckt</div>
+    <div class="field-results">
+      <div class="field-result">
+        <div class="conf">${Math.round(top.confidence*100)}%</div>
+        <div class="fr-name"><div class="fr-de">${esc(top.common_name)}</div><div class="fr-la">${esc(top.scientific_name)}</div></div>
+      </div>
+    </div>
+    <div class="fb ok" style="text-align:center" id="fieldRevealFb"></div>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="resetFieldChallenge()">Noch eine Aufnahme</button>`;
+  const saved=await addLifer(top.common_name, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
+  const fb=$('#fieldRevealFb'); if(fb) fb.textContent = saved ? '🎉 Als Lifer gespeichert!' : 'Schon in deiner Lebensliste.';
+}
+// Modus B – Selbst eingeben (Tippfehler-tolerant, Levenshtein ≤ 2)
+function fieldGuessType(){
+  if(!fieldChallenge) return;
+  const results=$('#fieldResults');
+  results.innerHTML=`
+    <div class="section-title">Selbst eingeben</div>
+    <p class="muted" style="font-size:14px;margin:-6px 2px 8px">Tippe den deutschen Namen des Vogels ein.</p>
+    <input class="input" id="fieldType" placeholder="Deutscher Name…" autocomplete="off" style="text-align:center;font-family:var(--display);font-size:18px">
+    <div class="fb" id="fieldTypeFb"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn ghost" style="flex:1" onclick="renderFieldChallenge()">Zurück</button>
+      <button class="btn" id="fieldTypeCheck" style="flex:1">Prüfen</button>
+    </div>`;
+  const inp=$('#fieldType'); inp.focus();
+  const check=()=>{
+    const top=fieldChallenge.results[0];
+    const guess=inp.value.trim();
+    if(!guess) return;
+    const norm=s=>s.toLowerCase().replace(/[\s\-]/g,'').replace(/ß/g,'ss');
+    const ok=lev(norm(guess),norm(top.common_name))<=2;
+    const fb=$('#fieldTypeFb');
+    if(ok){
+      fb.className='fb ok'; fb.textContent='Richtig! 🎉 Als Lifer gespeichert.';
+      inp.disabled=true;
+      const btn=$('#fieldTypeCheck'); btn.textContent='Noch eine Aufnahme'; btn.onclick=resetFieldChallenge;
+      addLifer(top.common_name, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
+    }else{
+      fb.className='fb no'; fb.textContent='Leider nicht. Versuch es nochmal oder rate per Multiple Choice.';
+    }
+  };
+  $('#fieldTypeCheck').onclick=check;
+  inp.onkeydown=e=>{ if(e.key==='Enter') check(); };
+}
+// Modus C – Multiple Choice: 4 Optionen (weitere Detektionen + suggest-Fallback), gemischt
+async function fieldMultipleChoice(){
+  if(!fieldChallenge) return;
+  const results=$('#fieldResults');
+  results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei"><span class="spin"></span></div><h3>Lade Rätsel…</h3>
+    <p>Die Antwortmöglichkeiten werden vorbereitet.</p></div>`;
+  const top=fieldChallenge.results[0];
+  const correct=top.common_name;
+  const opts=[];
+  const taken=n=>!n || n.toLowerCase()===correct.toLowerCase() || opts.some(o=>o.toLowerCase()===n.toLowerCase());
+  // bevorzugt weitere BirdNET-Detektionen (Platz 2–4)
+  for(const r of fieldChallenge.results.slice(1)){
+    if(opts.length>=3) break;
+    if(!taken(r.common_name)) opts.push(r.common_name);
   }
-  const lifer = {id:uid(), de, la, lat:lat||null, lon:lon||null, date:new Date().toISOString()};
+  // mit zufälligen Vögeln aus der suggest-API auffüllen
+  if(opts.length<3){
+    try{
+      const exclude=encodeURIComponent([correct,...opts].join(','));
+      const resp=await fetch(`/api/birdnet?action=suggest&n=12&exclude=${exclude}`);
+      const data=await resp.json();
+      for(const s of (data.species||[])){
+        if(opts.length>=3) break;
+        if(!taken(s)) opts.push(s);
+      }
+    }catch(e){}
+  }
+  const choices=[correct,...opts.slice(0,3)].sort(()=>Math.random()-0.5);
+  results.innerHTML=`
+    <div class="section-title">Multiple Choice</div>
+    <p class="muted" style="font-size:14px;margin:-6px 2px 8px">Welchen Vogel hast du aufgenommen?</p>
+    <div class="choices" id="fieldChoices">
+      ${choices.map((c,i)=>`<button class="choice" data-name="${esc(c)}"><span class="num">${i+1}</span>${esc(c)}</button>`).join('')}
+    </div>
+    <div class="fb" id="fieldMcFb"></div>
+    <div id="fieldMcAfter"></div>`;
+  $$('#fieldChoices .choice').forEach(btn=>{
+    btn.onclick=()=>{
+      const ok=btn.dataset.name.toLowerCase()===correct.toLowerCase();
+      $$('#fieldChoices .choice').forEach(x=>{ x.style.pointerEvents='none';
+        if(x.dataset.name.toLowerCase()===correct.toLowerCase()) x.classList.add('correct');
+        else if(x===btn) x.classList.add('wrong'); });
+      const fb=$('#fieldMcFb');
+      fb.className='fb '+(ok?'ok':'no');
+      fb.textContent=ok?'Richtig! 🎉 Als Lifer gespeichert.':`Leider falsch. Richtig war: ${correct}`;
+      $('#fieldMcAfter').innerHTML=`<button class="btn ghost" style="width:100%;margin-top:10px" onclick="resetFieldChallenge()">Noch eine Aufnahme</button>`;
+      if(ok) addLifer(top.common_name, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
+    };
+  });
+}
+async function addLifer(de, la, lat, lon, conf){
+  // Duplikat-Check: bevorzugt auf wissenschaftlichen Namen, sonst deutscher Name
+  if(state.lifers.find(l=>(la&&l.la&&l.la.toLowerCase()===la.toLowerCase()) || l.de.toLowerCase()===de.toLowerCase())){
+    toast(`„${de}" ist schon in deiner Lebensliste.`);
+    return false;
+  }
+  const lifer = {id:uid(), de, la, conf:typeof conf==='number'?conf:null, lat:lat||null, lon:lon||null, date:new Date().toISOString()};
   await DB.put('lifers', lifer);
   state.lifers.push(lifer);
   toast(`🎉 „${de}" als Lifer hinzugefügt!`, true);
@@ -1818,6 +1928,7 @@ async function addLifer(de, la, lat, lon){
     state.birds.push(b);
     enqueueEnrichment([b]);
   }
+  return true;
 }
 function renderFieldLifers(){
   const body=$('#fieldBody');
@@ -1838,6 +1949,7 @@ function renderFieldLifers(){
           ${l.la?`<div class="lc-la">${esc(l.la)}</div>`:''}
           <div class="lc-meta">
             <span>📅 ${dateStr}</span>
+            ${typeof l.conf==='number'&&l.conf?`<span>🎯 ${Math.round(l.conf*100)}%</span>`:''}
             ${l.lat?`<span>📍 ${Number(l.lat).toFixed(2)}, ${Number(l.lon).toFixed(2)}</span>`:''}
           </div>
           <button class="btn ghost sm" style="align-self:flex-start;margin-top:8px" onclick="removeLifer('${l.id}')">Entfernen</button>
