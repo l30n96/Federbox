@@ -172,7 +172,12 @@ module.exports = async (req, res) => {
       const data = await birdnetRes.json();
 
       // Normalize: our server returns { detections: [...] }
-      const raw = data.detections || data.results || data || [];
+      // Log response shape for debugging
+      console.log('BirdNET raw response:', JSON.stringify(data).slice(0, 300));
+      const raw = Array.isArray(data.detections) ? data.detections
+        : Array.isArray(data.results) ? data.results
+        : Array.isArray(data) ? data
+        : [];
       const results = raw
         .map(r => ({
           common_name:     r.common_name     || r.name     || '',
