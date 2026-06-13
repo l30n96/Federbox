@@ -1,0 +1,70 @@
+# ============================================================
+#  Federbox – lokaler BirdNET-Analyzer mit Tunnel
+#  Funktioniert auf: Laptop (amd64) und Raspberry Pi 4/5 (arm64)
+# ============================================================
+#
+#  Schnellstart:
+#    1. cp .env.example .env  → Werte anpassen
+#    2. docker compose up
+#    3. Tunnel-URL aus dem "tunnel"-Log kopieren (*.trycloudflare.com)
+#    4. BIRDNET_API_URL=https://xyz.trycloudflare.com/analyze in Federbox .env setzen
+#
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  #  BirdNET-Analyzer – REST-API-Server (Port 8080 intern)
+  # ----------------------------------------------------------
+  birdnet:
+    image: ghcr.io/birdnet-team/birdnet-analyzer:latest
+    # Raspberry Pi 4/5 (arm64): Zeile unten einkommentieren
+    # platform: linux/arm64
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-Europe/Berlin}
+    volumes:
+      # Optionaler lokaler Ordner für temporäre Aufnahmen (wird auto-angelegt)
+      - recordings:/tmp/birdnet_recordings
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ----------------------------------------------------------
+  #  Cloudflare Quick-Tunnel  (kein Account nötig)
+  #  Gibt eine temporäre *.trycloudflare.com URL aus.
+  #
+  #  Für eine FESTE URL (z. B. auf dem Pi dauerhaft):
+  #    → Cloudflare Zero Trust (kostenlos) einrichten,
+  #      TUNNEL_TOKEN in .env setzen und den "tunnel_named"-
+  #      Service einkommentieren (s. unten).
+  # ----------------------------------------------------------
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # Quick-Tunnel: URL erscheint im Log (temporär, ändert sich bei Neustart)
+    command: tunnel --no-autoupdate --url http://birdnet:8080
+    depends_on:
+      birdnet:
+        condition: service_healthy
+
+  # ----------------------------------------------------------
+  #  ALTERNATIVE: Benannter Cloudflare-Tunnel (feste URL)
+  #  Voraussetzung: TUNNEL_TOKEN in .env gesetzt
+  #  (Cloudflare Zero Trust → Tunnels → Tunnel erstellen → Token kopieren)
+  # ----------------------------------------------------------
+  # tunnel_named:
+  #   image: cloudflare/cloudflared:latest
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+  #   depends_on:
+  #     birdnet:
+  #       condition: service_healthy
+
+volumes:
+  recordings:
