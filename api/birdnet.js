@@ -13,7 +13,6 @@
 //     Returns: { species: [name1, name2, ...] }
 //
 // The BirdNET API endpoint can be configured via env var BIRDNET_API_URL.
-// Default: https://birdnet.cornell.edu/api/analyze (free tier, limited).
 
 function cleanEnv(v) {
   return String(v || '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
@@ -54,7 +53,6 @@ async function parseMultipart(req) {
   if (!boundaryMatch) return null;
   const boundary = boundaryMatch[1] || boundaryMatch[2];
 
-  // Read body as buffer
   const chunks = [];
   for await (const chunk of req) { chunks.push(chunk); }
   const body = Buffer.concat(chunks);
@@ -72,7 +70,7 @@ async function parseMultipart(req) {
     const headerEnd = part.indexOf('\r\n\r\n');
     if (headerEnd < 0) continue;
     const headerStr = part.slice(0, headerEnd).toString('utf8');
-    const content = part.slice(headerEnd + 4, part.length - 2); // remove trailing \r\n
+    const content = part.slice(headerEnd + 4, part.length - 2);
 
     const nameMatch = headerStr.match(/name="([^"]+)"/);
     if (!nameMatch) continue;
@@ -90,7 +88,6 @@ async function parseMultipart(req) {
 }
 
 module.exports = async (req, res) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -107,39 +104,50 @@ module.exports = async (req, res) => {
       if (!BIRDNET_URL()) {
         return json(res, {
           results: [],
-          error: 'BirdNET nicht konfiguriert. Bitte die Umgebungsvariable BIRDNET_API_URL auf einen laufenden BirdNET-Analyzer-Server setzen.',
+          error: 'BirdNET nicht konfiguriert.',
           notConfigured: true
         }, 200);
       }
+
       const parts = await parseMultipart(req);
       if (!parts || !parts.audio) {
         return json(res, { error: 'Kein Audio-File im Request' }, 400);
       }
 
-      const lat = parts.lat || url.searchParams.get('lat') || '';
-      const lon = parts.lon || url.searchParams.get('lon') || '';
-      const week = parts.week || url.searchParams.get('week') || String(getWeekNumber());
+      const lat  = parseFloat(parts.lat  || url.searchParams.get('lat')  || '0') || null;
+      const lon  = parseFloat(parts.lon  || url.searchParams.get('lon')  || '0') || null;
+      const week = parseInt(  parts.week || url.searchParams.get('week') || '-1', 10);
 
-      // Build multipart body for BirdNET API
+      // Build multipart body – our server expects 'audio' + 'meta' (JSON string)
       const boundary = '----FederboxBoundary' + Date.now().toString(36);
       const audioPart = parts.audio;
 
+      const meta = JSON.stringify({
+        lat:         lat,
+        lon:         lon,
+        week:        week,
+        min_conf:    0.1,
+        num_results: 10,
+        save:        false,
+      });
+
       const bodyParts = [];
-      // Audio file part
+
+      // audio field
       bodyParts.push(`--${boundary}\r\n`);
       bodyParts.push(`Content-Disposition: form-data; name="audio"; filename="${audioPart.filename || 'recording.wav'}"\r\n`);
       bodyParts.push(`Content-Type: ${audioPart.contentType || 'audio/wav'}\r\n\r\n`);
       bodyParts.push(audioPart.buffer);
       bodyParts.push('\r\n');
 
-      // Location params
-      if (lat) { bodyParts.push(`--${boundary}\r\nContent-Disposition: form-data; name="lat"\r\n\r\n${lat}\r\n`); }
-      if (lon) { bodyParts.push(`--${boundary}\r\nContent-Disposition: form-data; name="lon"\r\n\r\n${lon}\r\n`); }
-      if (week) { bodyParts.push(`--${boundary}\r\nContent-Disposition: form-data; name="week"\r\n\r\n${week}\r\n`); }
+      // meta field
+      bodyParts.push(`--${boundary}\r\n`);
+      bodyParts.push(`Content-Disposition: form-data; name="meta"\r\n\r\n`);
+      bodyParts.push(meta);
+      bodyParts.push('\r\n');
 
       bodyParts.push(`--${boundary}--\r\n`);
 
-      // Combine into a single Buffer
       const requestBody = Buffer.concat(bodyParts.map(p => typeof p === 'string' ? Buffer.from(p) : p));
 
       const birdnetRes = await fetch(BIRDNET_URL(), {
@@ -154,21 +162,24 @@ module.exports = async (req, res) => {
       if (!birdnetRes.ok) {
         const errText = await birdnetRes.text().catch(() => '');
         console.error('BirdNET API error:', birdnetRes.status, errText);
-        // Fallback: return empty results with a note
         return json(res, {
           results: [],
-          error: 'BirdNET-API nicht erreichbar oder Limit erreicht',
+          error: 'BirdNET-API Fehler: ' + birdnetRes.status,
           status: birdnetRes.status
         }, 200);
       }
 
       const data = await birdnetRes.json();
-      // Normalize response format
-      const results = (data.results || data || []).map(r => ({
-        common_name: r.common_name || r.name || '',
-        scientific_name: r.scientific_name || r.sci_name || '',
-        confidence: r.confidence || r.score || 0,
-      })).filter(r => r.confidence > 0.1)
+
+      // Normalize: our server returns { detections: [...] }
+      const raw = data.detections || data.results || data || [];
+      const results = raw
+        .map(r => ({
+          common_name:     r.common_name     || r.name     || '',
+          scientific_name: r.scientific_name || r.sci_name || '',
+          confidence:      r.confidence      || r.score    || 0,
+        }))
+        .filter(r => r.confidence > 0.1)
         .sort((a, b) => b.confidence - a.confidence)
         .slice(0, 10);
 
@@ -179,12 +190,8 @@ module.exports = async (req, res) => {
     if (action === 'suggest') {
       const n = Math.min(20, Math.max(1, parseInt(url.searchParams.get('n') || '4', 10)));
       const exclude = (url.searchParams.get('exclude') || '').split(',').filter(Boolean);
-
-      // Shuffle and pick n species not in exclude list
       const pool = COMMON_BIRDS_DE.filter(s => !exclude.includes(s));
-      const shuffled = pool.sort(() => Math.random() - 0.5);
-      const species = shuffled.slice(0, n);
-
+      const species = pool.sort(() => Math.random() - 0.5).slice(0, n);
       return json(res, { species }, 200, true);
     }
 
@@ -192,13 +199,12 @@ module.exports = async (req, res) => {
 
   } catch (err) {
     console.error('BirdNET proxy error:', err);
-    return json(res, { error: 'Interner Fehler' }, 500);
+    return json(res, { error: 'Interner Fehler: ' + err.message }, 500);
   }
 };
 
 function getWeekNumber() {
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 1);
-  const diff = now - start;
-  return Math.ceil((diff / 86400000 + start.getDay() + 1) / 7);
+  return Math.ceil(((now - start) / 86400000 + start.getDay() + 1) / 7);
 }
