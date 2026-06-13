@@ -1841,22 +1841,20 @@ async function fieldReveal(){
   const list=fieldChallenge.results.filter(r=>{
     const key=(r.scientific_name||r.common_name||'').toLowerCase();
     if(!key || seen.has(key)) return false; seen.add(key); return true;
-  });
+  }).map(r=>({...r, de:germanNameFor(r.scientific_name, r.common_name)}));
   results.innerHTML=`
     <div class="section-title">Aufgedeckt</div>
     <div class="field-results">
-      ${list.map((r,i)=>{
-        const de=germanNameFor(r.scientific_name, r.common_name);
-        return `<div class="field-result">
+      ${list.map((r,i)=>`<div class="field-result">
         <div class="fr-img" data-fr-img="${i}"><div class="noimg">🪶</div></div>
         <div class="conf">${Math.round(r.confidence*100)}%</div>
-        <div class="fr-name"><div class="fr-de">${esc(de)}</div><div class="fr-la">${esc(r.scientific_name)}</div></div>
-      </div>`;}).join('')}
+        <div class="fr-name"><div class="fr-de">${esc(r.de)}</div><div class="fr-la">${esc(r.scientific_name)}</div></div>
+      </div>`).join('')}
     </div>
     <div class="fb ok" style="text-align:center" id="fieldRevealFb"></div>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="resetFieldChallenge()">Noch eine Aufnahme</button>`;
   // Bilder für alle erkannten Vögel asynchron nachladen.
-  list.forEach((r,i)=>loadFieldImage(r.scientific_name, germanNameFor(r.scientific_name, r.common_name), `[data-fr-img="${i}"]`));
+  list.forEach((r,i)=>loadFieldImage(r.scientific_name, r.de, `[data-fr-img="${i}"]`));
   const saved=await addLifer(topDe, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
   const fb=$('#fieldRevealFb'); if(fb) fb.textContent = saved ? '🎉 Als Lifer gespeichert!' : 'Schon in deiner Lebensliste.';
 }
