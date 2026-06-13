@@ -1041,6 +1041,7 @@ function setView(v){
   if(v!=='study') stopAudio();
   if(v!=='community') stopChatPoll();
   if(v!=='field' && fieldRec){ try{fieldRec.stop();}catch(e){} }
+  if(v!=='field' && fieldRecTimer){clearTimeout(fieldRecTimer);fieldRecTimer=null;}
   state.view=v;
   $$('#nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
   render();
@@ -1671,7 +1672,7 @@ let commTab='board', chatTimer=null;
 function stopChatPoll(){ if(chatTimer){clearInterval(chatTimer); chatTimer=null;} }
 
 /* ---- Field (Feld-Modus) ---- */
-let fieldRec=null, fieldStream=null, fieldTab='record';
+let fieldRec=null, fieldStream=null, fieldTab='record', fieldRecTimer=null;
 function renderField(){
   view.innerHTML=`
     <div class="hero" style="margin-bottom:8px"><h1>Feld</h1>
@@ -1713,6 +1714,7 @@ async function toggleFieldRec(){
   fieldRec = new MediaRecorder(fieldStream, {mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm'});
   fieldRec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
   fieldRec.onstop=async()=>{
+    if(fieldRecTimer){clearTimeout(fieldRecTimer);fieldRecTimer=null;}
     fieldStream.getTracks().forEach(t=>t.stop());
     fieldStream=null;
     fieldRec=null;
@@ -1725,7 +1727,7 @@ async function toggleFieldRec(){
   const btn=$('#recBtn'); if(btn) btn.classList.add('recording');
   const status=$('#recStatus'); if(status) status.textContent='Aufnahme läuft… Tippe zum Stoppen.';
   // Auto-stop after 15s
-  setTimeout(()=>{ if(fieldRec && fieldRec.state==='recording') fieldRec.stop(); }, 15000);
+  fieldRecTimer=setTimeout(()=>{ fieldRecTimer=null; if(fieldRec && fieldRec.state==='recording') fieldRec.stop(); }, 15000);
 }
 async function analyzeFieldAudio(blob){
   const status=$('#recStatus');
