@@ -12,7 +12,7 @@ Alle Daten liegen **lokal im Browser** (IndexedDB). Nichts wird auf einen Server
 
 - **4 Lernspiele:** Karteikarte (selbst bewerten), Multiple Choice, Hörquiz (nur Ton), Tippen (mit Tipptoleranz)
 - **Leitner‑Kasten:** 5 Boxen, Wiederholungs‑Intervalle 1 / 2 / 4 / 8 / 16 Tage
-- **Automatische Recherche:** Deutscher Name + Bild (Wikipedia), wissenschaftlicher Name (Wikidata), Rufe (Xeno‑canto)
+- **Automatische Recherche:** Deutscher Name + Bild (iNaturalist), wissenschaftlicher Name (lokale Artenliste, 3000+ Arten), Rufe (Xeno‑canto)
 - **Sets:** eigene Lern‑Sets zusammenstellen
 - **Community (optional):** Rangliste, Sets teilen/importieren per Code, Chatroom „Vogelhäuschen“
 - **Offline‑fähig:** einmal angelegte Vögel kannst du auch ohne Netz lernen
@@ -29,8 +29,8 @@ vercel dev             # startet Frontend + die /api/proxy-Funktion lokal
 
 Dann im Browser `http://localhost:3000` öffnen.
 
-> Ohne laufendes Backend (`vercel dev`) funktioniert die **Suche** nicht – aber „Von Hand“
-> Vögel anlegen und vorhandene Karten lernen geht trotzdem.
+> Die **Suche** funktioniert jetzt komplett offline über die lokale Artenliste.
+> Nur Bilder (iNaturalist) und Stimmen (Xeno‑canto) brauchen eine Verbindung.
 
 ---
 
