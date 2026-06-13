@@ -349,6 +349,7 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
       <button data-view="collection"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Sammlung</button>
       <button data-view="sets"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Sets</button>
       <button data-view="add"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Hinzufügen</button>
+      <button data-view="field"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2C8 2 4 5 4 9c0 5 8 13 8 13s8-8 8-13c0-4-4-7-8-7z"/><circle cx="12" cy="9" r="2.5"/></svg>Feld</button>
       <button data-view="community"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.9-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9.5" r="2.4"/><path d="M15.6 14.6c2.4.2 4.3 1.6 4.9 4.4"/></svg>Community</button>
       <button class="nav-study" onclick="startStudyPick(null)"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>Lernen</button>
       <button data-view="settings"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>Mehr</button>
@@ -390,11 +391,12 @@ const DB = (()=>{
   let db=null;
   function open(){
     return new Promise((res,rej)=>{
-      const r=indexedDB.open('federbox',1);
+      const r=indexedDB.open('federbox',2);
       r.onupgradeneeded=e=>{
         const d=e.target.result;
         if(!d.objectStoreNames.contains('birds')) d.createObjectStore('birds',{keyPath:'id'});
         if(!d.objectStoreNames.contains('sets'))  d.createObjectStore('sets', {keyPath:'id'});
+        if(!d.objectStoreNames.contains('lifers')) d.createObjectStore('lifers',{keyPath:'id'});
       };
       r.onsuccess=e=>{db=e.target.result;res()};
       r.onerror=e=>rej(e.target.error);
@@ -915,10 +917,11 @@ function comboPop(n){
 /* ============================================================
    5. STATE
    ============================================================ */
-const state = { view:'dashboard', birds:[], sets:[] };
+const state = { view:'dashboard', birds:[], sets:[], lifers:[] };
 async function loadAll(){
   state.birds = await DB.all('birds');
   state.sets  = await DB.all('sets');
+  state.lifers = await DB.all('lifers');
   // Normalize any legacy sound URLs (protocol-relative or HTTP) for iOS compatibility
   for(const b of state.birds){
     if(!b.sounds || !b.sounds.length) continue;
