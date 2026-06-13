@@ -271,6 +271,9 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 .field-results{display:flex;flex-direction:column;gap:10px;margin-top:20px}
 .field-result{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
 .field-result .conf{font-family:var(--mono);font-size:12px;color:var(--ink-3);min-width:40px}
+.field-result .fr-img{width:54px;height:54px;flex:0 0 auto;border-radius:10px;overflow:hidden;background:var(--surface-2);display:grid;place-items:center}
+.field-result .fr-img img{width:100%;height:100%;object-fit:cover;display:block}
+.field-result .fr-img .noimg{font-size:22px;color:var(--ink-3)}
 .field-result .fr-name{flex:1}
 .field-result .fr-de{font-family:var(--display);font-size:17px;font-weight:500}
 .field-result .fr-la{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
@@ -728,6 +731,22 @@ function searchBirds(term){
 
 // Klammerzusatz aus Wikipedia-Titeln entfernen: „Star (Art)" → „Star"
 function cleanTitle(t){ return String(t||'').replace(/\s*\([^)]*\)\s*$/,'').trim(); }
+
+// Deutschen Namen über den wissenschaftlichen Namen aus BIRD_SPECIES_DATA holen.
+// BirdNET liefert je nach Server-Konfiguration englische oder gemischte Namen –
+// damit Multiple Choice & Co. einheitlich deutsch sind, mappen wir über `la`.
+let _deByLa=null;
+function germanNameFor(la, fallback){
+  if(!_deByLa){
+    _deByLa=new Map();
+    try{ for(const row of (typeof BIRD_SPECIES_DATA!=='undefined'?BIRD_SPECIES_DATA:[])){
+      const de=row[0], sci=row[1];
+      if(sci && de) _deByLa.set(String(sci).trim().toLowerCase(), de);
+    } }catch(e){}
+  }
+  const hit = la ? _deByLa.get(String(la).trim().toLowerCase()) : null;
+  return hit || fallback || la || '';
+}
 
 // Den passenden iNaturalist-Taxon zu einem wissenschaftlichen Namen holen.
 // Der Taxa-Endpunkt (/v1/taxa) kennt nur den Suchparameter `q` – `taxon_name`
@@ -1810,23 +1829,45 @@ function renderFieldChallenge(){
   $('#modeType').onclick=fieldGuessType;
   $('#modeMc').onclick=fieldMultipleChoice;
 }
-// Modus A – Aufdecken: deutscher + wiss. Name + Konfidenz, automatisch als Lifer
+// Modus A – Aufdecken: alle erkannten Vögel mit Bild + deutschem + wiss. Namen,
+// der wahrscheinlichste wird automatisch als Lifer gespeichert.
 async function fieldReveal(){
   if(!fieldChallenge) return;
   const top=fieldChallenge.results[0];
+  const topDe=germanNameFor(top.scientific_name, top.common_name);
   const results=$('#fieldResults');
+  // Doppelte Arten (gleicher wiss. Name) zusammenfassen, Reihenfolge nach Konfidenz.
+  const seen=new Set();
+  const list=fieldChallenge.results.filter(r=>{
+    const key=(r.scientific_name||r.common_name||'').toLowerCase();
+    if(!key || seen.has(key)) return false; seen.add(key); return true;
+  }).map(r=>({...r, de:germanNameFor(r.scientific_name, r.common_name)}));
   results.innerHTML=`
     <div class="section-title">Aufgedeckt</div>
     <div class="field-results">
-      <div class="field-result">
-        <div class="conf">${Math.round(top.confidence*100)}%</div>
-        <div class="fr-name"><div class="fr-de">${esc(top.common_name)}</div><div class="fr-la">${esc(top.scientific_name)}</div></div>
-      </div>
+      ${list.map((r,i)=>`<div class="field-result">
+        <div class="fr-img" data-fr-img="${i}"><div class="noimg">🪶</div></div>
+        <div class="conf">${Math.round(r.confidence*100)}%</div>
+        <div class="fr-name"><div class="fr-de">${esc(r.de)}</div><div class="fr-la">${esc(r.scientific_name)}</div></div>
+      </div>`).join('')}
     </div>
     <div class="fb ok" style="text-align:center" id="fieldRevealFb"></div>
     <button class="btn ghost" style="width:100%;margin-top:8px" onclick="resetFieldChallenge()">Noch eine Aufnahme</button>`;
-  const saved=await addLifer(top.common_name, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
+  // Bilder für alle erkannten Vögel asynchron nachladen.
+  list.forEach((r,i)=>loadFieldImage(r.scientific_name, r.de, `[data-fr-img="${i}"]`));
+  const saved=await addLifer(topDe, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
   const fb=$('#fieldRevealFb'); if(fb) fb.textContent = saved ? '🎉 Als Lifer gespeichert!' : 'Schon in deiner Lebensliste.';
+}
+// Bild eines Vogels über iNaturalist holen und in den Platzhalter setzen.
+async function loadFieldImage(la, de, selector){
+  if(!la) return;
+  try{
+    const taxon=await inatTaxon(la);
+    const url=taxon&&taxon.default_photo&&(taxon.default_photo.medium_url||taxon.default_photo.square_url);
+    if(!url) return;
+    const slot=$(selector);
+    if(slot) slot.innerHTML=`<img loading="lazy" src="${esc(url)}" alt="${esc(de||'')}">`;
+  }catch(e){ /* ohne Bild weiter */ }
 }
 // Modus B – Selbst eingeben (Tippfehler-tolerant, Levenshtein ≤ 2)
 function fieldGuessType(){
@@ -1844,16 +1885,17 @@ function fieldGuessType(){
   const inp=$('#fieldType'); inp.focus();
   const check=()=>{
     const top=fieldChallenge.results[0];
+    const correctDe=germanNameFor(top.scientific_name, top.common_name);
     const guess=inp.value.trim();
     if(!guess) return;
     const norm=s=>s.toLowerCase().replace(/[\s\-]/g,'').replace(/ß/g,'ss');
-    const ok=lev(norm(guess),norm(top.common_name))<=2;
+    const ok=lev(norm(guess),norm(correctDe))<=2;
     const fb=$('#fieldTypeFb');
     if(ok){
       fb.className='fb ok'; fb.textContent='Richtig! 🎉 Als Lifer gespeichert.';
       inp.disabled=true;
       const btn=$('#fieldTypeCheck'); btn.textContent='Noch eine Aufnahme'; btn.onclick=resetFieldChallenge;
-      addLifer(top.common_name, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
+      addLifer(correctDe, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
     }else{
       fb.className='fb no'; fb.textContent='Leider nicht. Versuch es nochmal oder rate per Multiple Choice.';
     }
@@ -1868,15 +1910,18 @@ async function fieldMultipleChoice(){
   results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei"><span class="spin"></span></div><h3>Lade Rätsel…</h3>
     <p>Die Antwortmöglichkeiten werden vorbereitet.</p></div>`;
   const top=fieldChallenge.results[0];
-  const correct=top.common_name;
+  // Alle Optionen einheitlich auf den deutschen Namen mappen – sonst verrät die
+  // abweichende Sprache (BirdNET-Englisch vs. deutsche Distraktoren) die Lösung.
+  const correct=germanNameFor(top.scientific_name, top.common_name);
   const opts=[];
   const taken=n=>!n || n.toLowerCase()===correct.toLowerCase() || opts.some(o=>o.toLowerCase()===n.toLowerCase());
   // bevorzugt weitere BirdNET-Detektionen (Platz 2–4)
   for(const r of fieldChallenge.results.slice(1)){
     if(opts.length>=3) break;
-    if(!taken(r.common_name)) opts.push(r.common_name);
+    const de=germanNameFor(r.scientific_name, r.common_name);
+    if(!taken(de)) opts.push(de);
   }
-  // mit zufälligen Vögeln aus der suggest-API auffüllen
+  // mit zufälligen Vögeln aus der suggest-API auffüllen (liefert deutsche Namen)
   if(opts.length<3){
     try{
       const exclude=encodeURIComponent([correct,...opts].join(','));
@@ -1907,7 +1952,7 @@ async function fieldMultipleChoice(){
       fb.className='fb '+(ok?'ok':'no');
       fb.textContent=ok?'Richtig! 🎉 Als Lifer gespeichert.':`Leider falsch. Richtig war: ${correct}`;
       $('#fieldMcAfter').innerHTML=`<button class="btn ghost" style="width:100%;margin-top:10px" onclick="resetFieldChallenge()">Noch eine Aufnahme</button>`;
-      if(ok) addLifer(top.common_name, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
+      if(ok) addLifer(correct, top.scientific_name, fieldChallenge.lat, fieldChallenge.lon, top.confidence);
     };
   });
 }
