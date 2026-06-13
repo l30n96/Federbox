@@ -24,7 +24,7 @@ module.exports = (req, res) => {
   const buyMeACoffee = /^https?:\/\//i.test(coffee) ? coffee : null;
 
   const birdnetUrl = cleanEnv(process.env.BIRDNET_API_URL);
-  const birdnetEnabled = /^https?:\/\//i.test(birdnetUrl);
+  const birdnetEnabled = !!(birdnetUrl && /^https?:\/\//i.test(birdnetUrl));
 
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
