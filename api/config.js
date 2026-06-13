@@ -23,7 +23,10 @@ module.exports = (req, res) => {
   // Nur http(s)-URLs durchlassen – alles andere ignorieren.
   const buyMeACoffee = /^https?:\/\//i.test(coffee) ? coffee : null;
 
+  const birdnetUrl = cleanEnv(process.env.BIRDNET_API_URL);
+  const birdnetEnabled = !!(birdnetUrl && /^https?:\/\//i.test(birdnetUrl));
+
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
-  return res.status(200).send(JSON.stringify({ buyMeACoffee }));
+  return res.status(200).send(JSON.stringify({ buyMeACoffee, birdnetEnabled }));
 };

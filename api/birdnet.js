@@ -19,7 +19,7 @@ function cleanEnv(v) {
   return String(v || '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
 }
 
-const BIRDNET_URL = () => cleanEnv(process.env.BIRDNET_API_URL) || 'https://birdnet.cornell.edu/api/analyze';
+const BIRDNET_URL = () => cleanEnv(process.env.BIRDNET_API_URL) || null;
 
 // Common European bird species for fallback suggestions (German names)
 const COMMON_BIRDS_DE = [
@@ -104,6 +104,13 @@ module.exports = async (req, res) => {
   try {
     // ---- ANALYZE: Forward audio to BirdNET ----
     if (action === 'analyze' && req.method === 'POST') {
+      if (!BIRDNET_URL()) {
+        return json(res, {
+          results: [],
+          error: 'BirdNET nicht konfiguriert. Bitte die Umgebungsvariable BIRDNET_API_URL auf einen laufenden BirdNET-Analyzer-Server setzen.',
+          notConfigured: true
+        }, 200);
+      }
       const parts = await parseMultipart(req);
       if (!parts || !parts.audio) {
         return json(res, { error: 'Kein Audio-File im Request' }, 400);

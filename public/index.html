@@ -1687,6 +1687,11 @@ function renderField(){
 }
 function renderFieldRecord(){
   const body=$('#fieldBody');
+  if(!appConfig.birdnetEnabled){
+    body.innerHTML=`<div class="empty" style="padding:30px"><div class="ei">🔌</div><h3>BirdNET nicht konfiguriert</h3>
+      <p>Um Vogelstimmen analysieren zu können, muss die Umgebungsvariable <code>BIRDNET_API_URL</code> auf einen laufenden <a href="https://github.com/birdnet-team/BirdNET-Analyzer" target="_blank" rel="noopener">BirdNET-Analyzer</a>-Server gesetzt werden.</p></div>`;
+    return;
+  }
   body.innerHTML=`
     <div style="text-align:center;padding:30px 0">
       <button class="rec-btn" id="recBtn" title="Aufnahme starten / stoppen">
