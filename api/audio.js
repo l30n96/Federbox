@@ -21,7 +21,7 @@ const ALLOWED_HOSTS = [
 function isAllowedUrl(urlStr) {
   try {
     const u = new URL(urlStr);
-    return ALLOWED_HOSTS.some(h => u.hostname === h || u.hostname.endsWith('.' + h));
+    return ALLOWED_HOSTS.includes(u.hostname);
   } catch { return false; }
 }
 
@@ -55,6 +55,11 @@ module.exports = async (req, res) => {
     const cr = upstream.headers.get('content-range');
     const ar = upstream.headers.get('accept-ranges');
 
+    // Reject excessively large files (bird sounds are typically < 2MB)
+    if (cl && parseInt(cl, 10) > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Datei zu groß' });
+    }
+
     res.setHeader('Content-Type', ct);
     res.setHeader('Accept-Ranges', ar || 'bytes');
     if (cl) res.setHeader('Content-Length', cl);
@@ -65,7 +70,8 @@ module.exports = async (req, res) => {
     const status = upstream.status; // 200 or 206
     res.status(status);
 
-    // Stream the response body
+    // Buffer and send (Vercel serverless functions don't support streaming;
+    // bird sounds are small, typically < 2MB, so buffering is fine here)
     const body = Buffer.from(await upstream.arrayBuffer());
     return res.send(body);
   } catch (err) {
