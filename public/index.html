@@ -1012,14 +1012,29 @@ function animateSpectro(on){
   };
   tick();
 }
+
+// --- iOS audio workaround ---
+// iOS Safari (all browsers on iOS use WebKit) fails to play audio from URLs that
+// involve HTTP redirects combined with range requests. Xeno-canto download URLs
+// redirect to a CDN, which breaks playback on iOS for many recordings.
+// Fix: On iOS/iPadOS, route audio through our own /api/audio proxy which follows
+// redirects server-side and serves audio with proper headers from same origin.
+const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function _audioSrc(url){
+  if(!_isIOS) return url;
+  // Route through audio proxy to avoid redirect+range-request issue
+  return '/api/audio?url=' + encodeURIComponent(url);
+}
+
 function playUrl(url){
   if(!url){ toast('Für diesen Vogel ist noch kein Laut gespeichert.'); return; }
   if(!player.paused && player.dataset.src===url){ player.pause(); return; }
-  // iOS Safari needs load() before play() when src changes
-  player.src=url; player.dataset.src=url;
+  player.dataset.src = url;
+  player.src = _audioSrc(url);
   player.load();
   player.play().catch(e=>{
-    // On iOS, retry once after a short delay (handles codec init timing)
     if(/NotAllowedError|AbortError|NotSupportedError/.test(e.name)){
       setTimeout(()=>{ player.play().catch(()=>toast('Laut konnte nicht abgespielt werden.')); }, 150);
     } else { toast('Laut konnte nicht abgespielt werden.'); }
@@ -1027,14 +1042,17 @@ function playUrl(url){
 }
 function autoplay(url){
   if(!url) return;
-  player.src=url; player.dataset.src=url;
+  player.dataset.src = url;
+  player.src = _audioSrc(url);
   player.load();
   player.play().catch(()=>{}); // stiller Autostart, Browser-Policy schluckt evtl.
 }
 player.addEventListener('play', ()=>animateSpectro(true));
 player.addEventListener('pause',()=>animateSpectro(false));
 player.addEventListener('ended',()=>animateSpectro(false));
-function stopAudio(){ try{player.pause(); player.currentTime=0;}catch(e){} }
+function stopAudio(){
+  try{player.pause(); player.currentTime=0;}catch(e){}
+}
 
 /* ============================================================
    7. VIEWS / RENDER
