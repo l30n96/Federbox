@@ -1869,8 +1869,8 @@ async function fieldMultipleChoice(){
     <p>Die Antwortmöglichkeiten werden vorbereitet.</p></div>`;
   const top=fieldChallenge.results[0];
   const correct=top.common_name;
-  const taken=n=>!n || n.toLowerCase()===correct.toLowerCase() || opts.some(o=>o.toLowerCase()===n.toLowerCase());
   const opts=[];
+  const taken=n=>!n || n.toLowerCase()===correct.toLowerCase() || opts.some(o=>o.toLowerCase()===n.toLowerCase());
   // bevorzugt weitere BirdNET-Detektionen (Platz 2–4)
   for(const r of fieldChallenge.results.slice(1)){
     if(opts.length>=3) break;
