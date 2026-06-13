@@ -261,6 +261,25 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
 .chk:hover{background:var(--surface-2)}
 .chk input{width:17px;height:17px;accent-color:var(--primary)}
 
+/* ---------- Field view ---------- */
+.rec-btn{width:80px;height:80px;border-radius:999px;background:var(--primary);color:#fff;display:grid;place-items:center;
+  box-shadow:0 4px 20px rgba(46,107,74,.35);transition:transform .15s,background .2s;margin:0 auto}
+.rec-btn:hover{transform:scale(1.06)}
+.rec-btn.recording{background:var(--robin);animation:pulse-rec 1.2s ease-in-out infinite}
+@keyframes pulse-rec{0%,100%{box-shadow:0 0 0 0 rgba(188,79,54,.4)}50%{box-shadow:0 0 0 16px rgba(188,79,54,0)}}
+.rec-btn svg{width:32px;height:32px}
+.field-results{display:flex;flex-direction:column;gap:10px;margin-top:20px}
+.field-result{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.field-result .conf{font-family:var(--mono);font-size:12px;color:var(--ink-3);min-width:40px}
+.field-result .fr-name{flex:1}
+.field-result .fr-de{font-family:var(--display);font-size:17px;font-weight:500}
+.field-result .fr-la{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.lifer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:14px}
+.lifer-card{padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.lifer-card .lc-de{font-family:var(--display);font-size:17px;font-weight:500}
+.lifer-card .lc-la{font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.lifer-card .lc-meta{font-size:12px;color:var(--ink-3);margin-top:6px;display:flex;gap:10px;flex-wrap:wrap}
+
 /* ---------- empty / toast / misc ---------- */
 .empty{text-align:center;padding:54px 20px;border:1.5px dashed var(--line);border-radius:var(--r-lg);background:var(--surface-2)}
 .empty .ei{font-size:40px}
@@ -349,6 +368,7 @@ label.lbl{font-size:12.5px;font-weight:600;color:var(--ink-2);margin:14px 0 6px;
       <button data-view="collection"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Sammlung</button>
       <button data-view="sets"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Sets</button>
       <button data-view="add"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Hinzufügen</button>
+      <button data-view="field"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2C8 2 4 5 4 9c0 5 8 13 8 13s8-8 8-13c0-4-4-7-8-7z"/><circle cx="12" cy="9" r="2.5"/></svg>Feld</button>
       <button data-view="community"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.9-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9.5" r="2.4"/><path d="M15.6 14.6c2.4.2 4.3 1.6 4.9 4.4"/></svg>Community</button>
       <button class="nav-study" onclick="startStudyPick(null)"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>Lernen</button>
       <button data-view="settings"><svg class="nav-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>Mehr</button>
@@ -390,11 +410,12 @@ const DB = (()=>{
   let db=null;
   function open(){
     return new Promise((res,rej)=>{
-      const r=indexedDB.open('federbox',1);
+      const r=indexedDB.open('federbox',2);
       r.onupgradeneeded=e=>{
         const d=e.target.result;
         if(!d.objectStoreNames.contains('birds')) d.createObjectStore('birds',{keyPath:'id'});
         if(!d.objectStoreNames.contains('sets'))  d.createObjectStore('sets', {keyPath:'id'});
+        if(!d.objectStoreNames.contains('lifers')) d.createObjectStore('lifers',{keyPath:'id'});
       };
       r.onsuccess=e=>{db=e.target.result;res()};
       r.onerror=e=>rej(e.target.error);
@@ -915,10 +936,11 @@ function comboPop(n){
 /* ============================================================
    5. STATE
    ============================================================ */
-const state = { view:'dashboard', birds:[], sets:[] };
+const state = { view:'dashboard', birds:[], sets:[], lifers:[] };
 async function loadAll(){
   state.birds = await DB.all('birds');
   state.sets  = await DB.all('sets');
+  state.lifers = await DB.all('lifers');
   // Normalize any legacy sound URLs (protocol-relative or HTTP) for iOS compatibility
   for(const b of state.birds){
     if(!b.sounds || !b.sounds.length) continue;
@@ -1018,6 +1040,8 @@ const view = $('#view');
 function setView(v){
   if(v!=='study') stopAudio();
   if(v!=='community') stopChatPoll();
+  if(v!=='field' && fieldRec){ try{fieldRec.stop();}catch(e){} }
+  if(v!=='field' && fieldRecTimer){clearTimeout(fieldRecTimer);fieldRecTimer=null;}
   state.view=v;
   $$('#nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
   render();
@@ -1029,6 +1053,7 @@ function render(){
     case 'sets': return renderSets();
     case 'add': return renderAdd();
     case 'community': return renderCommunity();
+    case 'field': return renderField();
     case 'settings': return renderSettings();
     case 'study': return; // vom Study-Engine verwaltet
   }
@@ -1645,6 +1670,164 @@ async function submitScore(){
 
 let commTab='board', chatTimer=null;
 function stopChatPoll(){ if(chatTimer){clearInterval(chatTimer); chatTimer=null;} }
+
+/* ---- Field (Feld-Modus) ---- */
+let fieldRec=null, fieldStream=null, fieldTab='record', fieldRecTimer=null;
+function renderField(){
+  view.innerHTML=`
+    <div class="hero" style="margin-bottom:8px"><h1>Feld</h1>
+      <p class="lead" style="font-size:17px">Nimm Vogelstimmen auf und lass sie von BirdNET bestimmen. Deine Sichtungen werden als Lebensliste gespeichert.</p></div>
+    <div class="tabs">
+      <button class="${fieldTab==='record'?'active':''}" onclick="fieldTab='record';renderField()">🎙️ Aufnahme</button>
+      <button class="${fieldTab==='lifers'?'active':''}" onclick="fieldTab='lifers';renderField()">📋 Lebensliste (${state.lifers.length})</button>
+    </div>
+    <div id="fieldBody"></div>`;
+  if(fieldTab==='record') renderFieldRecord();
+  else renderFieldLifers();
+}
+function renderFieldRecord(){
+  const body=$('#fieldBody');
+  body.innerHTML=`
+    <div style="text-align:center;padding:30px 0">
+      <button class="rec-btn" id="recBtn" title="Aufnahme starten / stoppen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+      <p class="muted" style="margin-top:14px;font-size:14px" id="recStatus">Tippe zum Aufnehmen (5–15 Sek. ideal)</p>
+    </div>
+    <div id="fieldResults"></div>`;
+  $('#recBtn').onclick=toggleFieldRec;
+}
+async function toggleFieldRec(){
+  if(fieldRec){
+    // Stop recording
+    fieldRec.stop();
+    return;
+  }
+  // Start recording
+  try{
+    fieldStream = await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(e){
+    toast('Mikrofon-Zugriff nicht erlaubt.');
+    return;
+  }
+  const chunks=[];
+  fieldRec = new MediaRecorder(fieldStream, {mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm'});
+  fieldRec.ondataavailable=e=>{if(e.data.size>0) chunks.push(e.data);};
+  fieldRec.onstop=async()=>{
+    if(fieldRecTimer){clearTimeout(fieldRecTimer);fieldRecTimer=null;}
+    fieldStream.getTracks().forEach(t=>t.stop());
+    fieldStream=null;
+    fieldRec=null;
+    const btn=$('#recBtn'); if(btn) btn.classList.remove('recording');
+    const status=$('#recStatus'); if(status) status.textContent='Analysiere…';
+    const blob = new Blob(chunks, {type:'audio/webm'});
+    await analyzeFieldAudio(blob);
+  };
+  fieldRec.start();
+  const btn=$('#recBtn'); if(btn) btn.classList.add('recording');
+  const status=$('#recStatus'); if(status) status.textContent='Aufnahme läuft… Tippe zum Stoppen.';
+  // Auto-stop after 15s
+  fieldRecTimer=setTimeout(()=>{ fieldRecTimer=null; if(fieldRec && fieldRec.state==='recording') fieldRec.stop(); }, 15000);
+}
+async function analyzeFieldAudio(blob){
+  const status=$('#recStatus');
+  const results=$('#fieldResults');
+  if(status) status.innerHTML='<span class="spin"></span> BirdNET analysiert…';
+  try{
+    // Get location if available
+    let lat='', lon='';
+    try{
+      const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:5000,maximumAge:60000}));
+      lat=String(pos.coords.latitude); lon=String(pos.coords.longitude);
+    }catch(e){}
+
+    const fd = new FormData();
+    fd.append('audio', blob, 'recording.webm');
+    if(lat) fd.append('lat', lat);
+    if(lon) fd.append('lon', lon);
+
+    const resp = await fetch('/api/birdnet?action=analyze', {method:'POST', body:fd});
+    const data = await resp.json();
+
+    if(status) status.textContent='Tippe zum Aufnehmen (5–15 Sek. ideal)';
+
+    if(!data.results || !data.results.length){
+      if(results) results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei">🤷</div><h3>Kein Vogel erkannt</h3>
+        <p>${data.error||'Versuche eine ruhigere Umgebung oder halte das Mikro näher zum Vogel.'}</p></div>`;
+      return;
+    }
+    if(results) results.innerHTML=`
+      <div class="section-title">Ergebnisse</div>
+      <div class="field-results">
+        ${data.results.map((r,i)=>`
+          <div class="field-result">
+            <div class="conf">${Math.round(r.confidence*100)}%</div>
+            <div class="fr-name"><div class="fr-de">${esc(r.common_name)}</div><div class="fr-la">${esc(r.scientific_name)}</div></div>
+            <button class="btn sm" onclick="addLiferByIdx(${i})">+ Lifer</button>
+          </div>`).join('')}
+      </div>`;
+    state._fieldResults = data.results.map(r=>({de:r.common_name, la:r.scientific_name, lat:lat||null, lon:lon||null}));
+  }catch(e){
+    if(status) status.textContent='Tippe zum Aufnehmen (5–15 Sek. ideal)';
+    if(results) results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei">⚠️</div><h3>Fehler</h3>
+      <p>BirdNET konnte nicht erreicht werden. Bitte nochmal versuchen.</p></div>`;
+  }
+}
+async function addLiferByIdx(i){
+  const r=(state._fieldResults||[])[i];
+  if(!r){toast('Ergebnis nicht mehr verfügbar.');return;}
+  await addLifer(r.de, r.la, r.lat, r.lon);
+}
+async function addLifer(de, la, lat, lon){
+  // Check if already in lifers
+  if(state.lifers.find(l=>l.de.toLowerCase()===de.toLowerCase())){
+    toast(`„${de}" ist schon in deiner Lebensliste.`);
+    return;
+  }
+  const lifer = {id:uid(), de, la, lat:lat||null, lon:lon||null, date:new Date().toISOString()};
+  await DB.put('lifers', lifer);
+  state.lifers.push(lifer);
+  toast(`🎉 „${de}" als Lifer hinzugefügt!`, true);
+  // Also add to bird collection if not already there
+  if(!state.birds.find(b=>b.de.toLowerCase()===de.toLowerCase())){
+    const b = {id:uid(), de, la, en:null, image:null, sounds:[], box:1, correct:0, wrong:0, next:0, pending:true};
+    await DB.put('birds', b);
+    state.birds.push(b);
+    enqueueEnrichment([b]);
+  }
+}
+function renderFieldLifers(){
+  const body=$('#fieldBody');
+  if(!state.lifers.length){
+    body.innerHTML=`<div class="empty"><div class="ei">🦅</div><h3>Noch keine Lifer</h3>
+      <p>Nimm Vogelstimmen im Feld auf und bestätige erkannte Arten – sie erscheinen hier als deine Lebensliste.</p></div>`;
+    return;
+  }
+  const sorted=[...state.lifers].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  body.innerHTML=`
+    <p class="muted" style="font-size:14px;margin-bottom:6px">${state.lifers.length} ${state.lifers.length===1?'Art':'Arten'} in deiner Lebensliste</p>
+    <div class="lifer-grid">
+      ${sorted.map(l=>{
+        const d=new Date(l.date);
+        const dateStr=d.toLocaleDateString('de-DE',{day:'numeric',month:'short',year:'numeric'});
+        return `<div class="lifer-card card">
+          <div class="lc-de">${esc(l.de)}</div>
+          ${l.la?`<div class="lc-la">${esc(l.la)}</div>`:''}
+          <div class="lc-meta">
+            <span>📅 ${dateStr}</span>
+            ${l.lat?`<span>📍 ${Number(l.lat).toFixed(2)}, ${Number(l.lon).toFixed(2)}</span>`:''}
+          </div>
+          <button class="btn ghost sm" style="align-self:flex-start;margin-top:8px" onclick="removeLifer('${l.id}')">Entfernen</button>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+async function removeLifer(id){
+  await DB.del('lifers', id);
+  state.lifers = state.lifers.filter(l=>l.id!==id);
+  toast('Lifer entfernt.');
+  renderFieldLifers();
+}
 
 function renderCommunity(){
   stopChatPoll();
