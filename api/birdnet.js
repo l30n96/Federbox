@@ -113,9 +113,7 @@ module.exports = async (req, res) => {
       const lon = parts.lon || url.searchParams.get('lon') || '';
       const week = parts.week || url.searchParams.get('week') || String(getWeekNumber());
 
-      // Build FormData for BirdNET API
-      const FormData = (await import('node:buffer')).Buffer ? null : null;
-      // Use node-fetch compatible multipart: build manually
+      // Build multipart body for BirdNET API
       const boundary = '----FederboxBoundary' + Date.now().toString(36);
       const audioPart = parts.audio;
 
@@ -187,7 +185,7 @@ module.exports = async (req, res) => {
 
   } catch (err) {
     console.error('BirdNET proxy error:', err);
-    return json(res, { error: 'Interner Fehler', detail: String(err && err.message || err) }, 500);
+    return json(res, { error: 'Interner Fehler' }, 500);
   }
 };
 

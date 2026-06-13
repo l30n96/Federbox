@@ -1757,18 +1757,24 @@ async function analyzeFieldAudio(blob){
     if(results) results.innerHTML=`
       <div class="section-title">Ergebnisse</div>
       <div class="field-results">
-        ${data.results.map(r=>`
+        ${data.results.map((r,i)=>`
           <div class="field-result">
             <div class="conf">${Math.round(r.confidence*100)}%</div>
             <div class="fr-name"><div class="fr-de">${esc(r.common_name)}</div><div class="fr-la">${esc(r.scientific_name)}</div></div>
-            <button class="btn sm" onclick="addLifer('${esc(r.common_name).replace(/'/g,"\\'")}','${esc(r.scientific_name).replace(/'/g,"\\'")}',${lat||'null'},${lon||'null'})">+ Lifer</button>
+            <button class="btn sm" onclick="addLiferByIdx(${i})">+ Lifer</button>
           </div>`).join('')}
       </div>`;
+    state._fieldResults = data.results.map(r=>({de:r.common_name, la:r.scientific_name, lat:lat||null, lon:lon||null}));
   }catch(e){
     if(status) status.textContent='Tippe zum Aufnehmen (5–15 Sek. ideal)';
     if(results) results.innerHTML=`<div class="empty" style="padding:30px"><div class="ei">⚠️</div><h3>Fehler</h3>
       <p>BirdNET konnte nicht erreicht werden. Bitte nochmal versuchen.</p></div>`;
   }
+}
+async function addLiferByIdx(i){
+  const r=(state._fieldResults||[])[i];
+  if(!r){toast('Ergebnis nicht mehr verfügbar.');return;}
+  await addLifer(r.de, r.la, r.lat, r.lon);
 }
 async function addLifer(de, la, lat, lon){
   // Check if already in lifers
