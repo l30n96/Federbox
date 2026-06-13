@@ -729,6 +729,26 @@ function searchBirds(term){
 // Klammerzusatz aus Wikipedia-Titeln entfernen: „Star (Art)" → „Star"
 function cleanTitle(t){ return String(t||'').replace(/\s*\([^)]*\)\s*$/,'').trim(); }
 
+// Den passenden iNaturalist-Taxon zu einem wissenschaftlichen Namen holen.
+// Der Taxa-Endpunkt (/v1/taxa) kennt nur den Suchparameter `q` – `taxon_name`
+// gehört zum Observations-Endpunkt und wird hier ignoriert (dann kommt für
+// jeden Vogel derselbe falsche Treffer). Damit `q` als Volltextsuche keine
+// falschen Arten liefert, schränken wir auf Vögel ein (iconic_taxa=Aves) und
+// nehmen nur einen Treffer, dessen wissenschaftlicher Name exakt passt
+// (sonst Gattungs-Treffer als Rückfall, sonst kein Bild statt falschem Bild).
+async function inatTaxon(la){
+  if(!la) return null;
+  const want=la.trim().toLowerCase();
+  const data=await px('inat',{q:la, iconic_taxa:'Aves', is_active:'true', per_page:'10'});
+  const results=data?.results||[];
+  if(!results.length) return null;
+  const norm=t=>String(t&&t.name||'').trim().toLowerCase();
+  const genus=want.split(/\s+/)[0];
+  return results.find(t=>norm(t)===want)
+      || results.find(t=>norm(t).startsWith(genus+' '))
+      || null;
+}
+
 // Einen Kandidaten anreichern: Bild (iNaturalist) + Laute (Xeno-canto)
 async function enrichBird(cand){
   const de = cand.title || cand.de;
@@ -737,12 +757,9 @@ async function enrichBird(cand){
   let image = cand.image || null;
 
   // Bild über iNaturalist holen (Taxa-Endpunkt, kein API-Key nötig)
-  // taxon_name statt q, da q eine Volltextsuche ist und falsche Treffer liefern kann
-  // (z.B. Wachtel → Knochenbild, Star → falscher Vogel).
   if(!image && la){
     try{
-      const inat = await px('inat', {taxon_name: la, per_page: '1'});
-      const taxon = inat?.results?.[0];
+      const taxon = await inatTaxon(la);
       if(taxon && taxon.default_photo){
         image = taxon.default_photo.medium_url || taxon.default_photo.square_url || null;
       }
@@ -1580,8 +1597,7 @@ function carouselNav(dir){
 async function fetchBirdImages(b, limit=3){
   if(!b.la)return [];
   try{
-    const data=await px('inat',{taxon_name:b.la, per_page:'1'});
-    const taxon=data?.results?.[0];
+    const taxon=await inatTaxon(b.la);
     if(!taxon) return b.image ? [b.image] : [];
     const photos=(taxon.taxon_photos||[]).slice(0, limit).map(tp=>
       tp.photo?.medium_url || tp.photo?.small_url
