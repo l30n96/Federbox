@@ -630,7 +630,7 @@ async function _runEnrichQueue(){
     try{
       // Longer delay between birds to stay well within rate limits
       await _throttleDelay(1200);
-      const cands = await searchBirds(SEARCH_TERM[b.de]||b.de);
+      const cands = await searchBirds(b.de);
       const fresh = await enrichFirstSpecies(cands);
       if(fresh){
         current.la=fresh.la; current.en=fresh.en; current.image=fresh.image;
@@ -694,8 +694,7 @@ function searchBirds(term){
       const combined = deLow + ' ' + laLow + ' ' + enLow;
       if(words.length > 1 && words.every(w => combined.includes(w))) score = 20;
     }
-    if(score > 0) results.push({de, la, en: en||null, score});
-    if(results.length > 100) break; // schnell abbrechen bei zu vielen Treffern
+    if(score > 0){ results.push({de, la, en: en||null, score}); if(results.length >= 20) break; }
   }
   results.sort((a,b) => b.score - a.score);
   const top = results.slice(0, 12);
@@ -819,7 +818,7 @@ async function repairBirds(){
         }
       }
       if(!b.la && !b.image){
-        const cands=await searchBirds(SEARCH_TERM[b.de]||b.de);
+        const cands=await searchBirds(b.de);
         const fresh=await enrichFirstSpecies(cands);
         if(fresh && fresh.la){
           b.de=fresh.de; b.la=fresh.la; b.en=fresh.en; b.image=fresh.image; b.wiki=fresh.wiki;
@@ -1286,8 +1285,6 @@ const BIRD_LISTS={
   'Greifvögel':['Mäusebussard','Turmfalke','Sperber','Habicht','Rotmilan','Schwarzmilan','Wanderfalke','Wespenbussard','Rohrweihe','Baumfalke'],
   'Feldvögel':['Feldlerche','Goldammer','Kiebitz','Rebhuhn','Neuntöter','Dorngrasmücke','Braunkehlchen','Grauammer','Wachtel','Schafstelze']
 };
-// Mehrdeutige Namen: lokale Suche liefert immer korrekte Treffer.
-const SEARCH_TERM={};
 // Aus den Suchtreffern den ersten echten Vogel (mit wiss. Namen) übernehmen.
 async function enrichFirstSpecies(cands){
   if(!cands.length) return null;
