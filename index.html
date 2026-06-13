@@ -737,9 +737,11 @@ async function enrichBird(cand){
   let image = cand.image || null;
 
   // Bild über iNaturalist holen (Taxa-Endpunkt, kein API-Key nötig)
+  // taxon_name statt q, da q eine Volltextsuche ist und falsche Treffer liefern kann
+  // (z.B. Wachtel → Knochenbild, Star → falscher Vogel).
   if(!image && la){
     try{
-      const inat = await px('inat', {q: la, rank: 'species', per_page: '1'});
+      const inat = await px('inat', {taxon_name: la, per_page: '1'});
       const taxon = inat?.results?.[0];
       if(taxon && taxon.default_photo){
         image = taxon.default_photo.medium_url || taxon.default_photo.square_url || null;
@@ -1578,7 +1580,7 @@ function carouselNav(dir){
 async function fetchBirdImages(b, limit=3){
   if(!b.la)return [];
   try{
-    const data=await px('inat',{q:b.la, rank:'species', per_page:'1'});
+    const data=await px('inat',{taxon_name:b.la, per_page:'1'});
     const taxon=data?.results?.[0];
     if(!taxon) return b.image ? [b.image] : [];
     const photos=(taxon.taxon_photos||[]).slice(0, limit).map(tp=>
