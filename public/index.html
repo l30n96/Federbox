@@ -778,6 +778,10 @@ async function enrichBird(cand){
 }
 
 function qScore(r){const o={A:0,B:1,C:2,D:3,E:4};const q=o[r.q]??5;const song=/song|gesang/i.test(r.type||'')?0:1;return q*2+song;}
+function normalizeXcUrl(rawUrl, id){
+  if(!rawUrl || typeof rawUrl!=='string' || !rawUrl.trim()) return `https://xeno-canto.org/${id}/download`;
+  return fixSoundUrl(rawUrl);
+}
 async function fetchSounds({la,en}, limit=3){
   let query=null;
   if(la){ const parts=la.trim().split(/\s+/); if(parts.length>=2) query=`gen:"${parts[0]}" sp:"${parts[1]}"`; }
@@ -788,7 +792,7 @@ async function fetchSounds({la,en}, limit=3){
     const recs = (data?.recordings)||[];
     return recs.sort((a,b)=>qScore(a)-qScore(b)).slice(0,limit).map(r=>({
       id:r.id,
-      url:(r.file&&String(r.file).startsWith('http'))?r.file:`https://xeno-canto.org/${r.id}/download`,
+      url:normalizeXcUrl(r.file, r.id),
       type:r.type||'', q:r.q||'', loc:r.loc||'', rec:r.rec||'', length:r.length||r.lengthMin||''
     }));
   }catch(e){ return []; }
@@ -958,6 +962,25 @@ const state = { view:'dashboard', birds:[], sets:[] };
 async function loadAll(){
   state.birds = await DB.all('birds');
   state.sets  = await DB.all('sets');
+  // Normalize any legacy sound URLs (protocol-relative or HTTP) for iOS compatibility
+  for(const b of state.birds){
+    if(!b.sounds || !b.sounds.length) continue;
+    let changed = false;
+    for(const s of b.sounds){
+      if(!s.url) continue;
+      const fixed = fixSoundUrl(s.url);
+      if(fixed !== s.url){ s.url = fixed; changed = true; }
+    }
+    if(changed){ b.synced = false; await DB.put('birds', b); }
+  }
+}
+// Normalize a sound URL: ensure HTTPS, handle protocol-relative
+function fixSoundUrl(url){
+  if(!url || typeof url!=='string') return url;
+  let u = url.trim();
+  if(u.startsWith('//')) u = 'https:' + u;
+  if(u.startsWith('http://')) u = u.replace('http://','https://');
+  return u;
 }
 const birdById = id => state.birds.find(b=>b.id===id);
 function setProgress(s){ // Boxverteilung eines Sets/aller
@@ -992,12 +1015,20 @@ function animateSpectro(on){
 function playUrl(url){
   if(!url){ toast('Für diesen Vogel ist noch kein Laut gespeichert.'); return; }
   if(!player.paused && player.dataset.src===url){ player.pause(); return; }
+  // iOS Safari needs load() before play() when src changes
   player.src=url; player.dataset.src=url;
-  player.play().catch(()=>toast('Laut konnte nicht abgespielt werden.'));
+  player.load();
+  player.play().catch(e=>{
+    // On iOS, retry once after a short delay (handles codec init timing)
+    if(/NotAllowedError|AbortError|NotSupportedError/.test(e.name)){
+      setTimeout(()=>{ player.play().catch(()=>toast('Laut konnte nicht abgespielt werden.')); }, 150);
+    } else { toast('Laut konnte nicht abgespielt werden.'); }
+  });
 }
 function autoplay(url){
   if(!url) return;
   player.src=url; player.dataset.src=url;
+  player.load();
   player.play().catch(()=>{}); // stiller Autostart, Browser-Policy schluckt evtl.
 }
 player.addEventListener('play', ()=>animateSpectro(true));
